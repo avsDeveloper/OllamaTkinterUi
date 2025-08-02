@@ -75,7 +75,7 @@ class OllamaGUI:
                                        foreground="green", font=('Arial', 9))
         self.model_ram_label.pack(anchor='w')
         
-        self.model_usage_label = ttk.Label(self.model_details_frame, text="GPU/CPU usage: ", 
+        self.model_usage_label = ttk.Label(self.model_details_frame, text="CPU/GPU usage: ", 
                                          foreground="green", font=('Arial', 9))
         self.model_usage_label.pack(anchor='w')
         
@@ -239,36 +239,200 @@ class OllamaGUI:
             return False
 
     def show_install_guide(self):
-        """Show installation guide for Ollama in logs."""
-        self.logs_display.delete(1.0, tk.END)
-        guide = """>>> OLLAMA INSTALLATION GUIDE <<<
+        """Show installation guide for Ollama in a separate formatted window."""
+        # Create a new window
+        guide_window = tk.Toplevel(self.root)
+        guide_window.title("Ollama Installation Guide")
+        guide_window.geometry("700x600")
+        guide_window.resizable(True, True)
+        
+        # Make window modal
+        guide_window.transient(self.root)
+        guide_window.grab_set()
+        
+        # Center the window
+        guide_window.update_idletasks()
+        x = (guide_window.winfo_screenwidth() // 2) - (700 // 2)
+        y = (guide_window.winfo_screenheight() // 2) - (600 // 2)
+        guide_window.geometry(f"700x600+{x}+{y}")
+        
+        # Main frame with padding
+        main_frame = ttk.Frame(guide_window, padding="20")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Title
+        title_label = ttk.Label(main_frame, text="🚀 Ollama Installation Guide", 
+                               font=("Arial", 16, "bold"), foreground="#2E7D32")
+        title_label.pack(pady=(0, 20))
+        
+        # Scrolled text widget for the guide content
+        text_frame = ttk.Frame(main_frame)
+        text_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 20))
+        
+        guide_text = scrolledtext.ScrolledText(
+            text_frame, 
+            wrap=tk.WORD, 
+            font=("Consolas", 11),
+            bg="#F8F9FA",
+            fg="#212529",
+            selectbackground="#0078D4",
+            selectforeground="white",
+            padx=15,
+            pady=15
+        )
+        guide_text.pack(fill=tk.BOTH, expand=True)
+        
+        # Formatted installation guide content
+        guide_content = """🐋 OLLAMA INSTALLATION GUIDE
 
-To install Ollama on Linux:
+═══════════════════════════════════════════════════════════════════
 
-1. Download and install Ollama:
+📦 QUICK INSTALLATION (Recommended)
+
+1. Automatic Installation Script:
    curl -fsSL https://ollama.ai/install.sh | sh
 
-2. Or install manually:
-   - Visit https://ollama.ai/download/linux
-   - Download the appropriate package for your system
-   - Install using your package manager
+   This will automatically detect your Linux distribution and install Ollama.
 
-3. After installation, you can:
-   - Pull models: ollama pull llama3
-   - Start server: ollama serve
-   - List models: ollama list
+═══════════════════════════════════════════════════════════════════
 
-4. Popular models to try:
-   - ollama pull llama3
-   - ollama pull mistral
-   - ollama pull codellama
-   - ollama pull phi3
+🔧 MANUAL INSTALLATION
 
-5. Once installed, click 'Refresh' to detect models.
+2. Ubuntu/Debian:
+   wget https://ollama.ai/download/ollama-linux-amd64
+   sudo mv ollama-linux-amd64 /usr/local/bin/ollama
+   sudo chmod +x /usr/local/bin/ollama
 
->>> Visit https://ollama.ai for more information <<<
+3. Fedora/RHEL/CentOS:
+   sudo dnf install -y curl
+   curl -fsSL https://ollama.ai/install.sh | sh
+
+4. Arch Linux:
+   yay -S ollama
+   # or
+   sudo pacman -S ollama
+
+═══════════════════════════════════════════════════════════════════
+
+🚀 GETTING STARTED
+
+After installation, you can:
+
+• Start the server:
+  ollama serve
+
+• Download popular models:
+  ollama pull llama3
+  ollama pull mistral
+  ollama pull codellama
+  ollama pull phi3
+  ollama pull gemma
+
+• List installed models:
+  ollama list
+
+• Run a model:
+  ollama run llama3
+
+• Get model information:
+  ollama show llama3
+
+═══════════════════════════════════════════════════════════════════
+
+💡 POPULAR MODELS TO TRY
+
+Model Name          Size    Description
+─────────────────   ────    ──────────────────────────────────────
+llama3             4.7GB    Meta's latest general-purpose model
+mistral            4.1GB    Fast and efficient for most tasks
+codellama          3.8GB    Specialized for code generation
+phi3               2.3GB    Microsoft's compact model
+gemma              5.0GB    Google's Gemma model
+qwen               4.0GB    Alibaba's multilingual model
+
+═══════════════════════════════════════════════════════════════════
+
+🔍 VERIFICATION
+
+To verify installation:
+ollama --version
+
+To check if server is running:
+ollama list
+
+═══════════════════════════════════════════════════════════════════
+
+🌐 USEFUL LINKS
+
+• Official Website:     https://ollama.ai
+• GitHub Repository:    https://github.com/ollama/ollama
+• Model Library:        https://ollama.ai/library
+• Documentation:        https://github.com/ollama/ollama/blob/main/README.md
+
+═══════════════════════════════════════════════════════════════════
+
+💬 TROUBLESHOOTING
+
+If you encounter issues:
+1. Check if the server is running: ollama serve
+2. Verify installation: which ollama
+3. Check logs: journalctl -u ollama
+4. Restart the service: systemctl restart ollama
+
+═══════════════════════════════════════════════════════════════════
+
+Once installed, click 'Refresh' in the main application to detect models.
 """
-        self.logs_display.insert(tk.END, guide)
+        
+        # Insert the content
+        guide_text.insert("1.0", guide_content)
+        guide_text.config(state="normal")  # Keep it editable for selection/copying
+        
+        # Configure text tags for better formatting
+        guide_text.tag_configure("title", font=("Arial", 14, "bold"), foreground="#1976D2")
+        guide_text.tag_configure("section", font=("Arial", 12, "bold"), foreground="#2E7D32")
+        guide_text.tag_configure("command", font=("Consolas", 10, "bold"), background="#E3F2FD", foreground="#0D47A1")
+        guide_text.tag_configure("separator", foreground="#9E9E9E")
+        
+        # Apply tags (simplified approach)
+        lines = guide_content.split('\n')
+        current_line = 1
+        for line in lines:
+            line_start = f"{current_line}.0"
+            line_end = f"{current_line}.end"
+            
+            if line.startswith('🐋') or line.startswith('═══'):
+                guide_text.tag_add("separator", line_start, line_end)
+            elif line.startswith('📦') or line.startswith('🔧') or line.startswith('🚀') or line.startswith('💡') or line.startswith('🔍') or line.startswith('🌐') or line.startswith('💬'):
+                guide_text.tag_add("section", line_start, line_end)
+            elif '  ollama ' in line or '  curl ' in line or '  sudo ' in line or '  wget ' in line or '  yay ' in line:
+                guide_text.tag_add("command", line_start, line_end)
+            
+            current_line += 1
+        
+        # Button frame
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(fill=tk.X)
+        
+        # Copy All button
+        def copy_all():
+            guide_window.clipboard_clear()
+            guide_window.clipboard_append(guide_content)
+            copy_button.config(text="✅ Copied!")
+            guide_window.after(2000, lambda: copy_button.config(text="📋 Copy All"))
+        
+        copy_button = ttk.Button(button_frame, text="📋 Copy All", command=copy_all)
+        copy_button.pack(side=tk.LEFT, padx=(0, 10))
+        
+        # Close button
+        close_button = ttk.Button(button_frame, text="Close", command=guide_window.destroy)
+        close_button.pack(side=tk.RIGHT)
+        
+        # Focus on the window
+        guide_text.focus_set()
+        
+        # Handle window close with Escape key
+        guide_window.bind('<Escape>', lambda e: guide_window.destroy())
 
     def auto_start_server(self):
         """Automatically start the Ollama server if not running."""
@@ -555,7 +719,7 @@ To install Ollama on Linux:
             self.show_status_message(f"Error getting model info: {str(e)}")
             return {"size": "Error", "ram_usage": "Error", "gpu_cpu_usage": "Error", "context": "Error"}
 
-    def update_model_details(self, model_name):
+    def update_model_details(self, model_name, loading=False):
         """Update the model details display with information about the selected model."""
         if not model_name:
             # Show notification, hide details
@@ -567,16 +731,33 @@ To install Ollama on Linux:
         self.model_notification.pack_forget()
         self.model_details_frame.pack(pady=(5, 0), fill=tk.X)
         
+        # Show loading state immediately
+        if loading:
+            short_name = model_name.split(':')[0] if ':' in model_name else model_name
+            self.model_name_label.config(text=f"Selected model: {short_name}", foreground="green")
+            self.model_size_label.config(text="Model size: Loading...", foreground="#1976D2")
+            self.model_ram_label.config(text="RAM usage: Loading...", foreground="#1976D2")
+            self.model_usage_label.config(text="GPU/CPU usage: Loading...", foreground="#1976D2")
+            self.model_context_label.config(text="Context size: Loading...", foreground="#1976D2")
+            return
+        
         # Get model information
         model_info = self.get_model_info(model_name)
         
-        # Update labels with fixed width formatting
+        # Update labels with actual data
         short_name = model_name.split(':')[0] if ':' in model_name else model_name
-        self.model_name_label.config(text=f"Selected model: {short_name}")
-        self.model_size_label.config(text=f"Model size: {model_info['size']}")
-        self.model_ram_label.config(text=f"RAM usage: {model_info['ram_usage']}")
-        self.model_usage_label.config(text=f"GPU/CPU usage: {model_info['gpu_cpu_usage']}")
-        self.model_context_label.config(text=f"Context size: {model_info['context']}")
+        self.model_name_label.config(text=f"Selected model: {short_name}", foreground="green")
+        
+        # Set color based on content - blue for loading/unknown, green for actual data
+        size_color = "#1976D2" if model_info['size'] in ["Unknown", "Loading...", "Error"] else "green"
+        ram_color = "#1976D2" if model_info['ram_usage'] in ["Unknown", "Loading...", "Error", "Not loaded"] else "green"
+        usage_color = "#1976D2" if model_info['gpu_cpu_usage'] in ["Unknown", "Loading...", "Error", "0%/0%"] else "green"
+        context_color = "#1976D2" if model_info['context'] in ["Unknown", "Loading...", "Error"] else "green"
+        
+        self.model_size_label.config(text=f"Model size: {model_info['size']}", foreground=size_color)
+        self.model_ram_label.config(text=f"RAM usage: {model_info['ram_usage']}", foreground=ram_color)
+        self.model_usage_label.config(text=f"GPU/CPU usage: {model_info['gpu_cpu_usage']}", foreground=usage_color)
+        self.model_context_label.config(text=f"Context size: {model_info['context']}", foreground=context_color)
 
     def preload_model(self, model_name):
         """Pre-load the model to make it ready for immediate use."""
@@ -587,17 +768,17 @@ To install Ollama on Linux:
             
             if result.returncode == 0:
                 self.root.after(0, lambda: self.show_status_message(f"✅ Model '{model_name}' loaded successfully!"))
-                # Update model details to show new usage information
-                self.root.after(0, lambda: self.update_model_details(model_name))
+                # Update model details to show new usage information after loading
+                self.root.after(0, lambda: self.update_model_details(model_name, loading=False))
             else:
                 self.root.after(0, lambda: self.show_status_message(f"⚠️ Model '{model_name}' loaded with warnings."))
                 # Still update details as model might be partially loaded
-                self.root.after(0, lambda: self.update_model_details(model_name))
+                self.root.after(0, lambda: self.update_model_details(model_name, loading=False))
                 
         except Exception as e:
             self.root.after(0, lambda: self.show_status_message(f"Error loading model: {str(e)}"))
             # Still try to update details
-            self.root.after(0, lambda: self.update_model_details(model_name))
+            self.root.after(0, lambda: self.update_model_details(model_name, loading=False))
 
     def show_status_message(self, message):
         """Show a status message in the logs display."""
@@ -616,17 +797,26 @@ To install Ollama on Linux:
         
         self.selected_model = selected
         
-        # Update model details display
-        self.update_model_details(selected)
+        # Show loading state immediately
+        self.update_model_details(selected, loading=True)
         
         self.chat_display.delete(1.0, tk.END)
         self.chat_display.insert(tk.END, f"✅ Model '{selected}' is ready for chat!\n")
         self.chat_display.insert(tk.END, "📝 Type your message after the >>> prompt and press Enter or click Send.\n\n")
         self.setup_user_input_prompt()
         
-        # Pre-load the model and update details
+        # Pre-load the model and update details in background
         self.show_status_message(f"Loading model '{selected}'...")
-        threading.Thread(target=self.preload_model, args=(selected,), daemon=True).start()
+        
+        def load_model_info():
+            # Small delay to make loading state visible
+            time.sleep(0.2)
+            # Get the actual model information
+            self.root.after(0, lambda: self.update_model_details(selected, loading=False))
+            # Then preload the model
+            self.preload_model(selected)
+        
+        threading.Thread(target=load_model_info, daemon=True).start()
 
     def setup_user_input_prompt(self):
         """Set up a new user input prompt in the chat."""
