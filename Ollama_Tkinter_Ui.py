@@ -55,6 +55,13 @@ class OllamaGUI:
         self.choose_button = ttk.Button(buttons_frame, text="Choose Model", command=self.choose_model)
         self.choose_button.pack(side=tk.LEFT)
         
+        self.download_button = ttk.Button(buttons_frame, text="Download", command=self.show_download_dialog)
+        self.download_button.pack(side=tk.LEFT, padx=(5, 0))
+        
+        # Download status label
+        self.download_status_label = ttk.Label(model_frame, text="", foreground="#1976D2", font=('Arial', 9))
+        self.download_status_label.pack(pady=(5, 0), anchor='w')
+        
         # Model selection notification
         self.model_notification = ttk.Label(model_frame, text="⚠️ No model selected", foreground="red", font=('Arial', 9))
         self.model_notification.pack(pady=(5, 0), anchor='w')
@@ -116,6 +123,9 @@ class OllamaGUI:
         self.server_was_running = False  # Track server state
         self.monitoring = True  # Enable server monitoring
         self.input_line_start = None  # Track where user input starts
+        self.download_process = None  # Track model download process
+        self.downloading_model = None  # Track which model is being downloaded
+        self.is_downloading = False  # Track download state
         
         # Handle window close
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -434,6 +444,191 @@ Once installed, click 'Refresh' in the main application to detect models.
         # Handle window close with Escape key
         guide_window.bind('<Escape>', lambda e: guide_window.destroy())
 
+    def show_download_dialog(self):
+        """Show dialog for downloading a new model."""
+        if self.is_downloading:
+            return  # Prevent multiple download dialogs
+            
+        # Create download dialog
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Download Model")
+        dialog.geometry("400x200")
+        dialog.resizable(False, False)
+        
+        # Make dialog modal
+        dialog.transient(self.root)
+        dialog.grab_set()
+        
+        # Center the dialog
+        dialog.update_idletasks()
+        x = (dialog.winfo_screenwidth() // 2) - (400 // 2)
+        y = (dialog.winfo_screenheight() // 2) - (200 // 2)
+        dialog.geometry(f"400x200+{x}+{y}")
+        
+        # Main frame
+        main_frame = ttk.Frame(dialog, padding="20")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Title
+        title_label = ttk.Label(main_frame, text="Download Ollama Model", 
+                               font=("Arial", 14, "bold"))
+        title_label.pack(pady=(0, 20))
+        
+        # Model name input
+        ttk.Label(main_frame, text="Model name:").pack(anchor='w')
+        model_entry = ttk.Entry(main_frame, width=40, font=("Arial", 11))
+        model_entry.pack(fill=tk.X, pady=(5, 10))
+        model_entry.focus()
+        
+        # Examples
+        examples_label = ttk.Label(main_frame, 
+                                  text="Examples: llama3, mistral, codellama, phi3, gemma",
+                                  font=("Arial", 9), foreground="#666666")
+        examples_label.pack(pady=(0, 20))
+        
+        # Button frame
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(fill=tk.X)
+        
+        def start_download():
+            model_name = model_entry.get().strip()
+            if not model_name:
+                messagebox.showwarning("Invalid Input", "Please enter a model name.")
+                return
+            
+            dialog.destroy()
+            self.download_model(model_name)
+        
+        def cancel_dialog():
+            dialog.destroy()
+        
+        # Buttons
+        cancel_btn = ttk.Button(button_frame, text="Cancel", command=cancel_dialog)
+        cancel_btn.pack(side=tk.RIGHT)
+        
+        download_btn = ttk.Button(button_frame, text="Download", command=start_download)
+        download_btn.pack(side=tk.RIGHT, padx=(0, 10))
+        
+        # Handle Enter key
+        model_entry.bind('<Return>', lambda e: start_download())
+        dialog.bind('<Escape>', lambda e: cancel_dialog())
+
+    def download_model(self, model_name):
+        """Download a model using ollama pull."""
+        if self.is_downloading or not self.ollama_path:
+            return
+            
+        self.is_downloading = True
+        self.downloading_model = model_name
+        
+        # Update UI to show downloading state
+        self.download_status_label.config(text=f"📥 Downloading {model_name}...")
+        self.download_button.config(text="Cancel", command=self.cancel_download)
+        self.send_button.config(state='disabled')  # Disable chat during download
+        
+        self.show_status_message(f"Starting download of model '{model_name}'...")
+        
+        def download_thread():
+            try:
+                # Start the download process
+                self.download_process = subprocess.Popen(
+                    [self.ollama_path, "pull", model_name],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    bufsize=1,
+                    universal_newlines=True
+                )
+                
+                # Monitor download progress
+                while True:
+                    if self.download_process.poll() is not None:
+                        # Process finished
+                        break
+                    
+                    # Read output line by line
+                    output = self.download_process.stdout.readline()
+                    if output:
+                        # Update status with download progress
+                        clean_output = output.strip()
+                        if clean_output:
+                            self.root.after(0, lambda msg=clean_output: 
+                                self.show_status_message(f"Download progress: {msg}"))
+                    
+                    time.sleep(0.1)
+                
+                # Check final result
+                return_code = self.download_process.returncode
+                stdout, stderr = self.download_process.communicate()
+                
+                if return_code == 0:
+                    # Download successful
+                    self.root.after(0, lambda: self.on_download_success(model_name))
+                else:
+                    # Download failed
+                    error_msg = stderr.strip() if stderr else "Unknown error"
+                    self.root.after(0, lambda: self.on_download_error(model_name, error_msg))
+                    
+            except Exception as e:
+                self.root.after(0, lambda: self.on_download_error(model_name, str(e)))
+        
+        # Start download in background thread
+        threading.Thread(target=download_thread, daemon=True).start()
+
+    def cancel_download(self):
+        """Cancel the current model download."""
+        if self.download_process and self.download_process.poll() is None:
+            try:
+                self.download_process.terminate()
+                self.download_process.wait(timeout=5)
+            except:
+                try:
+                    self.download_process.kill()
+                except:
+                    pass
+        
+        self.show_status_message(f"Download of '{self.downloading_model}' cancelled.")
+        self.on_download_finished()
+
+    def on_download_success(self, model_name):
+        """Handle successful model download."""
+        self.show_status_message(f"✅ Model '{model_name}' downloaded successfully!")
+        
+        # Refresh models list
+        self.refresh_models()
+        
+        # Auto-select the downloaded model
+        models = self.get_ollama_models()
+        if model_name in models:
+            self.model_var.set(model_name)
+            self.selected_model = model_name
+            self.update_model_details(model_name, loading=True)
+            
+            # Load model info in background
+            def load_info():
+                time.sleep(0.2)
+                self.root.after(0, lambda: self.update_model_details(model_name, loading=False))
+            threading.Thread(target=load_info, daemon=True).start()
+        
+        self.on_download_finished()
+
+    def on_download_error(self, model_name, error_msg):
+        """Handle download error."""
+        self.show_status_message(f"❌ Failed to download '{model_name}': {error_msg}")
+        messagebox.showerror("Download Failed", f"Failed to download model '{model_name}':\n\n{error_msg}")
+        self.on_download_finished()
+
+    def on_download_finished(self):
+        """Reset UI after download completion or cancellation."""
+        self.is_downloading = False
+        self.downloading_model = None
+        self.download_process = None
+        
+        # Reset UI elements
+        self.download_status_label.config(text="")
+        self.download_button.config(text="Download", command=self.show_download_dialog)
+        self.send_button.config(state='normal')  # Re-enable chat
+
     def auto_start_server(self):
         """Automatically start the Ollama server if not running."""
         if self.server_starting or not self.ollama_path:
@@ -708,7 +903,7 @@ Once installed, click 'Refresh' in the main application to detect models.
                             self.show_status_message(f"System GPU/CPU usage: {model_info['gpu_cpu_usage']}")
                         break
                 else:
-                    model_info["ram_usage"] = "Not loaded"
+                    model_info["ram_usage"] = "Loading"
                     model_info["gpu_cpu_usage"] = "0%/0%"
             else:
                 self.show_status_message(f"ollama ps failed: {ps_result.stderr}")
@@ -837,6 +1032,10 @@ Once installed, click 'Refresh' in the main application to detect models.
 
     def send_message_from_chat(self):
         """Send message from chat input area."""
+        if self.is_downloading:
+            self.show_status_message("⚠️ Chat is disabled while downloading model. Please wait for download to complete.")
+            return
+            
         if not self.selected_model:
             self.show_status_message("⚠️ Please choose a model first using the 'Choose Model' button.")
             return
@@ -892,6 +1091,10 @@ Once installed, click 'Refresh' in the main application to detect models.
         # Reset to no model selected state if no model is currently selected
         if not self.selected_model:
             self.update_model_details(None)
+            
+        # Clear download status if not downloading
+        if not self.is_downloading:
+            self.download_status_label.config(text="")
 
     def run_ollama_query(self, model, prompt):
         """Query Ollama and update GUI with response."""
@@ -926,8 +1129,20 @@ Once installed, click 'Refresh' in the main application to detect models.
             self.root.after(0, lambda: self.send_button.config(state='normal'))
 
     def on_closing(self):
-        """Handle application closing - cleanup Ollama process if we started it."""
+        """Handle application closing - cleanup processes."""
         try:
+            # Cancel any ongoing download
+            if self.is_downloading and self.download_process:
+                try:
+                    self.download_process.terminate()
+                    self.download_process.wait(timeout=3)
+                except:
+                    try:
+                        self.download_process.kill()
+                    except:
+                        pass
+            
+            # Cleanup Ollama server process if we started it
             if self.ollama_process and self.ollama_process.poll() is None:
                 self.ollama_process.terminate()
                 self.ollama_process.wait(timeout=5)
