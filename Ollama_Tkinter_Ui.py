@@ -11,7 +11,7 @@ class OllamaGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("Ollama Chat")
-        self.root.geometry("600x400")
+        self.root.geometry("1400x900")
 
         # Menu bar
         menubar = tk.Menu(root)
@@ -21,39 +21,61 @@ class OllamaGUI:
         menubar.add_cascade(label="Help", menu=help_menu)
         help_menu.add_command(label="Installation Guide", command=self.show_install_guide)
 
-        # Model Selection
-        self.model_label = ttk.Label(root, text="Select Model:")
-        self.model_label.pack(pady=5)
+        # Main container with two panels
+        main_frame = ttk.Frame(root)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Left panel for controls and logs
+        left_frame = ttk.Frame(main_frame, width=350)
+        left_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10))
+        left_frame.pack_propagate(False)  # Maintain fixed width
+        
+        # Right panel for chat
+        right_frame = ttk.Frame(main_frame)
+        right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
+
+        # Model Selection (in left panel)
+        self.model_label = ttk.Label(left_frame, text="Select Model:")
+        self.model_label.pack(pady=(0, 5), anchor='w')
         
         # Model dropdown and buttons frame
-        model_frame = ttk.Frame(root)
-        model_frame.pack(pady=5)
+        model_frame = ttk.Frame(left_frame)
+        model_frame.pack(pady=(0, 10), fill=tk.X)
         
         self.model_var = tk.StringVar()
-        self.model_dropdown = ttk.Combobox(model_frame, textvariable=self.model_var, width=35, state="readonly")
-        self.model_dropdown.pack(side=tk.LEFT, padx=(0, 5))
+        self.model_dropdown = ttk.Combobox(model_frame, textvariable=self.model_var, width=25, state="readonly")
+        self.model_dropdown.pack(fill=tk.X, pady=(0, 5))
         
-        self.refresh_button = ttk.Button(model_frame, text="Refresh", command=self.refresh_models)
+        buttons_frame = ttk.Frame(model_frame)
+        buttons_frame.pack(fill=tk.X)
+        
+        self.refresh_button = ttk.Button(buttons_frame, text="Refresh", command=self.refresh_models)
         self.refresh_button.pack(side=tk.LEFT, padx=(0, 5))
         
-        self.choose_button = ttk.Button(model_frame, text="Choose Model", command=self.choose_model)
+        self.choose_button = ttk.Button(buttons_frame, text="Choose Model", command=self.choose_model)
         self.choose_button.pack(side=tk.LEFT)
         
-        # Chat Display
-        self.chat_display = scrolledtext.ScrolledText(root, wrap=tk.WORD, width=70, height=15)
-        self.chat_display.pack(pady=10)
+        # Logs section (in left panel)
+        logs_label = ttk.Label(left_frame, text="System Logs:")
+        logs_label.pack(pady=(20, 5), anchor='w')
+        
+        self.logs_display = scrolledtext.ScrolledText(left_frame, wrap=tk.WORD, width=40, height=25, font=('Consolas', 9))
+        self.logs_display.pack(fill=tk.BOTH, expand=True)
+        
+        # Chat Display (in right panel)
+        chat_label = ttk.Label(right_frame, text="Chat:")
+        chat_label.pack(pady=(0, 5), anchor='w')
+        
+        self.chat_display = scrolledtext.ScrolledText(right_frame, wrap=tk.WORD, font=('Arial', 11))
+        self.chat_display.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        self.chat_display.bind("<KeyPress>", self.on_chat_keypress)
+        
+        # Send button (in right panel)
+        self.send_button = ttk.Button(right_frame, text="Send Message", command=self.send_message_from_chat)
+        self.send_button.pack(pady=(0, 5))
         
         # Initialize Ollama
         self.initialize_ollama()
-
-        # User Input
-        self.user_input = ttk.Entry(root, width=60)
-        self.user_input.pack(pady=5)
-        self.user_input.bind("<Return>", self.send_message)
-
-        # Send Button
-        self.send_button = ttk.Button(root, text="Send", command=self.send_message)
-        self.send_button.pack(pady=5)
 
         # Variables
         self.ollama_process = None
@@ -62,6 +84,7 @@ class OllamaGUI:
         self.ollama_path = None  # Will be set when ollama is found
         self.server_was_running = False  # Track server state
         self.monitoring = True  # Enable server monitoring
+        self.input_line_start = None  # Track where user input starts
         
         # Handle window close
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -145,16 +168,21 @@ class OllamaGUI:
     
     def on_server_started(self):
         """Handle server start event"""
-        self.title_label.config(text="🟢 Ollama Chat")
-        self.show_status_message("Ollama server is now running!")
+        if not self.server_starting:  # Only show if we didn't start it ourselves
+            self.show_status_message("🟢 Ollama server detected - started externally")
+        else:
+            self.show_status_message("🟢 Ollama server is now running!")
         self.refresh_models()
     
     def on_server_stopped(self):
         """Handle server stop event"""
-        self.title_label.config(text="🔴 Ollama Chat")
-        self.show_status_message("Ollama server has stopped.")
+        if not self.server_starting:  # Only show if we didn't stop it ourselves
+            self.show_status_message("🔴 Ollama server stopped")
+        else:
+            self.show_status_message("Ollama server has stopped.")
         self.model_var.set("")
-        self.models_combobox['values'] = []
+        self.model_dropdown['values'] = []
+        self.selected_model = None
 
     def check_ollama_installation(self):
         """Check if Ollama is properly installed."""
@@ -179,8 +207,8 @@ class OllamaGUI:
             return False
 
     def show_install_guide(self):
-        """Show installation guide for Ollama."""
-        self.chat_display.delete(1.0, tk.END)
+        """Show installation guide for Ollama in logs."""
+        self.logs_display.delete(1.0, tk.END)
         guide = """>>> OLLAMA INSTALLATION GUIDE <<<
 
 To install Ollama on Linux:
@@ -208,7 +236,7 @@ To install Ollama on Linux:
 
 >>> Visit https://ollama.ai for more information <<<
 """
-        self.chat_display.insert(tk.END, guide)
+        self.logs_display.insert(tk.END, guide)
 
     def auto_start_server(self):
         """Automatically start the Ollama server if not running."""
@@ -275,21 +303,6 @@ To install Ollama on Linux:
         
         threading.Thread(target=monitor_server, daemon=True).start()
 
-    def on_server_started(self):
-        """Handle server start event."""
-        if not self.server_starting:  # Only show if we didn't start it ourselves
-            self.show_status_message("🟢 Ollama server detected - started externally")
-            self.refresh_models()
-
-    def on_server_stopped(self):
-        """Handle server stop event."""
-        if not self.server_starting:  # Only show if we didn't stop it ourselves
-            self.show_status_message("🔴 Ollama server stopped")
-            # Clear models and reset selection
-            self.model_dropdown['values'] = []
-            self.model_var.set("")
-            self.selected_model = None
-
     def get_ollama_models(self):
         """Fetch installed Ollama models."""
         if not self.ollama_path:
@@ -324,10 +337,10 @@ To install Ollama on Linux:
             return []
 
     def show_status_message(self, message):
-        """Show a status message in the chat display."""
+        """Show a status message in the logs display."""
         try:
-            self.chat_display.insert(tk.END, f">>> {message}\n")
-            self.chat_display.see(tk.END)
+            self.logs_display.insert(tk.END, f">>> {message}\n")
+            self.logs_display.see(tk.END)
         except:
             print(f"Status: {message}")
 
@@ -340,9 +353,67 @@ To install Ollama on Linux:
         
         self.selected_model = selected
         self.chat_display.delete(1.0, tk.END)
-        self.chat_display.insert(tk.END, f">>> Model '{selected}' is ready for chat!\n")
-        self.chat_display.insert(tk.END, ">>> Type your message and press Enter or click Send.\n")
-        self.user_input.focus()
+        self.chat_display.insert(tk.END, f"✅ Model '{selected}' is ready for chat!\n")
+        self.chat_display.insert(tk.END, "📝 Type your message after the >>> prompt and press Enter or click Send.\n\n")
+        self.setup_user_input_prompt()
+
+    def setup_user_input_prompt(self):
+        """Set up a new user input prompt in the chat."""
+        self.chat_display.insert(tk.END, ">>> ")
+        self.chat_display.focus()
+        self.chat_display.see(tk.END)
+
+    def on_chat_keypress(self, event):
+        """Handle key presses in the chat display."""
+        # Handle Enter key - send message
+        if event.keysym == "Return":
+            # Prevent default newline insertion and send message
+            self.send_message_from_chat()
+            return "break"
+        
+        # Allow normal text editing
+        return None
+
+    def send_message_from_chat(self):
+        """Send message from chat input area."""
+        if not self.selected_model:
+            self.show_status_message("⚠️ Please choose a model first using the 'Choose Model' button.")
+            return
+        
+        # Get user input from the current line
+        try:
+            # Get all text from the chat display
+            all_text = self.chat_display.get("1.0", tk.END)
+            lines = all_text.split('\n')
+            
+            # Find the last line that starts with ">>> "
+            user_text = ""
+            for line in reversed(lines):
+                if line.startswith(">>> "):
+                    user_text = line[4:].strip()  # Remove ">>> " prefix
+                    break
+            
+            if not user_text:
+                self.show_status_message("⚠️ Please type a message after the >>> prompt")
+                return
+            
+            # Disable send button during processing
+            self.send_button.config(state='disabled')
+            
+            # Add newline after user input and show it's being processed
+            self.chat_display.insert(tk.END, f"\n\nAssistant: ")
+            self.chat_display.see(tk.END)
+            
+            def run_query():
+                self.run_ollama_query(self.selected_model, user_text)
+                
+            threading.Thread(target=run_query, daemon=True).start()
+            
+        except Exception as e:
+            # If there's an error, just set up a new prompt
+            self.show_status_message(f"Error sending message: {str(e)}")
+            self.setup_user_input_prompt()
+            self.send_button.config(state='normal')
 
     def refresh_models(self):
         """Refresh the model dropdown with current Ollama models."""
@@ -357,45 +428,15 @@ To install Ollama on Linux:
             self.model_var.set("")
             self.show_status_message("No models found. Install models: 'ollama pull llama3'")
 
-    def send_message(self, event=None):
-        """Send user input to Ollama and display response."""
-        if not self.selected_model:
-            messagebox.showwarning("No Model Chosen", "Please choose a model first using the 'Choose Model' button.")
-            return
-            
-        user_text = self.user_input.get().strip()
-        if not user_text:
-            return
-
-        self.chat_display.insert(tk.END, f"You: {user_text}\n")
-        self.user_input.delete(0, tk.END)
-        self.chat_display.see(tk.END)
-        
-        # Disable UI during processing
-        self.send_button.config(state='disabled')
-        self.user_input.config(state='disabled')
-
-        def enable_ui():
-            self.send_button.config(state='normal')
-            self.user_input.config(state='normal')
-            self.user_input.focus()
-
-        def run_query():
-            self.run_ollama_query(self.selected_model, user_text)
-            self.root.after(0, enable_ui)
-
-        threading.Thread(target=run_query, daemon=True).start()
-
     def run_ollama_query(self, model, prompt):
         """Query Ollama and update GUI with response."""
         if not self.ollama_path:
             self.root.after(0, lambda: self.chat_display.insert(tk.END, "Error: Ollama not found\n\n"))
+            self.root.after(0, self.setup_user_input_prompt)
+            self.root.after(0, lambda: self.send_button.config(state='normal'))
             return
             
         try:
-            self.root.after(0, lambda: self.chat_display.insert(tk.END, f"Assistant: "))
-            self.root.after(0, lambda: self.chat_display.see(tk.END))
-            
             cmd = [self.ollama_path, "run", model, prompt]
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
             
@@ -407,11 +448,17 @@ To install Ollama on Linux:
                 self.root.after(0, lambda: self.chat_display.insert(tk.END, f"Error: {error_msg}\n\n"))
                 
             self.root.after(0, lambda: self.chat_display.see(tk.END))
+            self.root.after(0, self.setup_user_input_prompt)
+            self.root.after(0, lambda: self.send_button.config(state='normal'))
             
         except subprocess.TimeoutExpired:
             self.root.after(0, lambda: self.chat_display.insert(tk.END, "Error: Request timed out\n\n"))
+            self.root.after(0, self.setup_user_input_prompt)
+            self.root.after(0, lambda: self.send_button.config(state='normal'))
         except Exception as e:
             self.root.after(0, lambda: self.chat_display.insert(tk.END, f"Error: {str(e)}\n\n"))
+            self.root.after(0, self.setup_user_input_prompt)
+            self.root.after(0, lambda: self.send_button.config(state='normal'))
 
     def on_closing(self):
         """Handle application closing - cleanup Ollama process if we started it."""
