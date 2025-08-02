@@ -66,10 +66,10 @@ Perfect for users who want the convenience of a desktop interface without the co
 
 2. **Download the GUI**:
    ```bash
-   wget https://github.com/your-repo/ollama-gui/raw/main/Ollama_Tkinter_Ui.py
+   wget https://github.com/avsDeveloper/OllamaTkinterUi/raw/main/Ollama_Tkinter_Ui.py
    # OR clone the repository
-   git clone https://github.com/your-repo/ollama-gui.git
-   cd ollama-gui
+   git clone https://github.com/avsDeveloper/OllamaTkinterUi.git
+   cd OllamaTkinterUi
    ```
 
 3. **Make executable and run**:
@@ -156,10 +156,11 @@ This GUI is built with:
 
 ### File Structure
 ```
-ollama-gui/
+OllamaTkinterUi/
 ├── Ollama_Tkinter_Ui.py    # Main application
-├── README.md               # This file
-└── LICENSE                 # MIT License
+├── README.md               # This documentation
+├── LICENSE                 # MIT License
+└── deepseek_python_20250801_6294e2.py  # Original development file
 ```
 
 ## 🤝 Contributing
