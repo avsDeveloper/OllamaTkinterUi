@@ -34,6 +34,21 @@ class OllamaGUI:
         right_frame = ttk.Frame(main_frame)
         right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
 
+        # Server Status Section (in left panel)
+        server_status_frame = ttk.Frame(left_frame)
+        server_status_frame.pack(pady=(0, 10), fill=tk.X)
+        
+        # Server status label
+        self.server_status_label = ttk.Label(server_status_frame, 
+                                           text="Server Status: Checking...", 
+                                           foreground="#1976D2", 
+                                           font=('Arial', 10))
+        self.server_status_label.pack(pady=(0, 5), anchor='w')
+        
+        # Restart button under server status
+        self.restart_button = ttk.Button(server_status_frame, text="Restart Ollama", command=self.restart_ollama_server)
+        self.restart_button.pack(anchor='w', pady=(0, 5))
+
         # Model Selection (in left panel)
         self.model_label = ttk.Label(left_frame, text="Select Model:")
         self.model_label.pack(pady=(0, 5), anchor='w')
@@ -126,12 +141,16 @@ class OllamaGUI:
         self.download_process = None  # Track model download process
         self.downloading_model = None  # Track which model is being downloaded
         self.is_downloading = False  # Track download state
+        self.server_started_by_user = False  # Track if server was started by this GUI
         
         # Handle window close
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
         
         # Start server monitoring
         self.start_server_monitoring()
+        
+        # Initial status update
+        self.root.after(100, self.update_server_status_display)
 
     def initialize_ollama(self):
         """Initialize Ollama server and load models on startup."""
@@ -139,6 +158,7 @@ class OllamaGUI:
         
         def check_and_start():
             if not self.check_ollama_installation():
+                self.root.after(0, self.update_server_status_display)
                 return
                 
             if not self.is_ollama_server_running():
@@ -146,7 +166,12 @@ class OllamaGUI:
                 # Call auto_start_server from the main thread
                 self.root.after(0, self.auto_start_server)
             else:
-                self.root.after(0, lambda: self.show_status_message("Ollama server is already running."))
+                self.root.after(0, lambda: self.show_status_message("Ollama server is already running. Detecting who started it..."))
+                # Server was already running, detect who started it
+                self.server_started_by_user = self.detect_server_starter()
+                starter = "user" if self.server_started_by_user else "system"
+                self.root.after(0, lambda: self.show_status_message(f"Server was started by: {starter}"))
+                self.root.after(0, self.update_server_status_display)
                 self.root.after(0, self.refresh_models)
         
         threading.Thread(target=check_and_start, daemon=True).start()
@@ -207,12 +232,107 @@ class OllamaGUI:
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
             return False
     
+    def detect_server_starter(self):
+        """Detect who started the Ollama server process."""
+        try:
+            # Get current user info
+            import getpass
+            current_user = getpass.getuser()
+            current_uid = os.getuid()
+            
+            # Find ollama serve processes
+            try:
+                # Use ps to find ollama serve processes with user info
+                ps_result = subprocess.run(
+                    ["ps", "aux"], 
+                    capture_output=True, text=True, timeout=5
+                )
+                
+                if ps_result.returncode == 0:
+                    lines = ps_result.stdout.split('\n')
+                    for line in lines:
+                        if 'ollama serve' in line and not line.strip().startswith('ps'):
+                            # Parse ps output: USER PID %CPU %MEM VSZ RSS TTY STAT START TIME COMMAND
+                            parts = line.split()
+                            if len(parts) >= 11:
+                                process_user = parts[0]
+                                process_pid = parts[1]
+                                self.show_status_message(f"Found ollama serve process (PID: {process_pid}) running as: {process_user}")
+                                
+                                # Check if it's the current user
+                                if process_user == current_user:
+                                    return True  # Started by user
+                                elif process_user in ['root', 'ollama', 'systemd+', '_ollama']:
+                                    return False  # Started by system
+                                else:
+                                    # Could be another user, assume system for safety
+                                    self.show_status_message(f"Unknown user '{process_user}', assuming system process")
+                                    return False
+                
+                # Fallback: try pgrep with user info
+                pgrep_result = subprocess.run(
+                    ["pgrep", "-f", "-u", current_user, "ollama serve"],
+                    capture_output=True, text=True, timeout=3
+                )
+                
+                if pgrep_result.returncode == 0 and pgrep_result.stdout.strip():
+                    # Found ollama serve process running as current user
+                    pids = pgrep_result.stdout.strip().split('\n')
+                    self.show_status_message(f"pgrep confirms ollama serve running as {current_user} (PIDs: {', '.join(pids)})")
+                    return True
+                else:
+                    # Check if it's running as system user
+                    pgrep_system = subprocess.run(
+                        ["pgrep", "-f", "ollama serve"],
+                        capture_output=True, text=True, timeout=3
+                    )
+                    if pgrep_system.returncode == 0:
+                        system_pids = pgrep_system.stdout.strip().split('\n')
+                        self.show_status_message(f"ollama serve found running as system process (PIDs: {', '.join(system_pids)})")
+                        return False
+                
+            except Exception as e:
+                self.show_status_message(f"Error detecting server starter: {str(e)}")
+                
+            # If we can't determine, assume system for safety
+            self.show_status_message("Could not determine server starter, assuming system")
+            return False
+            
+        except Exception as e:
+            # If detection fails, assume system
+            self.show_status_message(f"Server detection failed: {str(e)}, assuming system")
+            return False
+    
+    def update_server_status_display(self):
+        """Update the server status display based on current state."""
+        if not hasattr(self, 'server_status_label'):
+            return
+            
+        if not self.is_ollama_server_running():
+            self.server_status_label.config(text="Server Status: Not running", foreground="red")
+            self.show_status_message("Status update: Server not running")
+        elif self.server_started_by_user:
+            self.server_status_label.config(text="Server Status: Started by user", foreground="green")
+            self.show_status_message(f"Status update: Started by user (flag={self.server_started_by_user})")
+        else:
+            self.server_status_label.config(text="Server Status: Started by system", foreground="orange")
+            self.show_status_message(f"Status update: Started by system (flag={self.server_started_by_user})")
+    
     def on_server_started(self):
         """Handle server start event"""
         if not self.server_starting:  # Only show if we didn't start it ourselves
             self.show_status_message("🟢 Ollama server detected - started externally")
+            # Detect who actually started it
+            self.server_started_by_user = self.detect_server_starter()
+            starter = "user" if self.server_started_by_user else "system"
+            self.show_status_message(f"External server was started by: {starter}")
         else:
             self.show_status_message("🟢 Ollama server is now running!")
+            # Don't override if already set to True by auto_start_server
+            if not hasattr(self, 'server_started_by_user') or not self.server_started_by_user:
+                self.server_started_by_user = True
+            self.show_status_message(f"GUI started server - server_started_by_user: {self.server_started_by_user}")
+        self.update_server_status_display()
         self.refresh_models()
     
     def on_server_stopped(self):
@@ -221,6 +341,8 @@ class OllamaGUI:
             self.show_status_message("🔴 Ollama server stopped")
         else:
             self.show_status_message("Ollama server has stopped.")
+        self.server_started_by_user = False
+        self.update_server_status_display()
         self.model_var.set("")
         self.model_dropdown['values'] = []
         self.selected_model = None
@@ -635,6 +757,8 @@ Once installed, click 'Refresh' in the main application to detect models.
             return
             
         self.server_starting = True
+        # Mark that this GUI is starting the server
+        self.server_started_by_user = True
         self.show_status_message("Starting Ollama server...")
         
         def start_server():
@@ -655,10 +779,12 @@ Once installed, click 'Refresh' in the main application to detect models.
                     time.sleep(1)
                     self.root.after(0, lambda i=i: self.show_status_message(f"Checking server startup... ({i+1}/15)"))
                     if self.is_ollama_server_running():
-                        self.root.after(0, lambda: self.show_status_message("Ollama server started successfully!"))
+                        self.root.after(0, lambda: self.show_status_message("Ollama server started successfully by GUI!"))
                         self.root.after(0, self.refresh_models)
                         self.server_starting = False
                         self.server_was_running = True  # Update tracking state
+                        # Update status display to show "Started by user"
+                        self.root.after(0, self.update_server_status_display)
                         return
                 
                 self.root.after(0, lambda: self.show_status_message("Failed to start Ollama server after 15 seconds."))
@@ -669,6 +795,53 @@ Once installed, click 'Refresh' in the main application to detect models.
                 self.server_starting = False
         
         threading.Thread(target=start_server, daemon=True).start()
+
+    def restart_ollama_server(self):
+        """Restart the Ollama server to ensure it runs in user context."""
+        if self.server_starting:
+            self.show_status_message("Server is already starting, please wait...")
+            return
+            
+        self.show_status_message("Restarting Ollama server to refresh user context...")
+        
+        def restart_server():
+            try:
+                # First, try to stop any existing Ollama processes
+                self.root.after(0, lambda: self.show_status_message("Stopping existing Ollama processes..."))
+                
+                # Kill any existing ollama serve processes
+                try:
+                    subprocess.run(["pkill", "-f", "ollama serve"], 
+                                 capture_output=True, timeout=5)
+                    time.sleep(2)  # Give processes time to terminate
+                except:
+                    pass
+                
+                # Stop our own process if we have one
+                if self.ollama_process and self.ollama_process.poll() is None:
+                    try:
+                        self.ollama_process.terminate()
+                        self.ollama_process.wait(timeout=5)
+                    except:
+                        try:
+                            self.ollama_process.kill()
+                        except:
+                            pass
+                    self.ollama_process = None
+                
+                # Wait a moment for cleanup
+                time.sleep(1)
+                
+                # Now start the server in user context
+                self.root.after(0, lambda: self.show_status_message("Starting Ollama server in user context..."))
+                # Mark that the user is restarting the server
+                self.server_started_by_user = True
+                self.root.after(0, self.auto_start_server)
+                
+            except Exception as e:
+                self.root.after(0, lambda: self.show_status_message(f"Error restarting server: {str(e)}"))
+        
+        threading.Thread(target=restart_server, daemon=True).start()
 
     def start_server_monitoring(self):
         """Start monitoring Ollama server status in the background."""
@@ -687,6 +860,9 @@ Once installed, click 'Refresh' in the main application to detect models.
                             self.root.after(0, lambda: self.on_server_stopped())
                         
                         self.server_was_running = current_running
+                    
+                    # Always update status display to ensure it's correct
+                    self.root.after(0, self.update_server_status_display)
                     
                     time.sleep(3)  # Check every 3 seconds
                 except Exception:
@@ -728,7 +904,7 @@ Once installed, click 'Refresh' in the main application to detect models.
             return []
 
     def get_system_usage_info(self):
-        """Try to get actual system GPU/CPU usage information."""
+        """Try to get actual system CPU/GPU usage information."""
         import random
         
         try:
@@ -879,7 +1055,7 @@ Once installed, click 'Refresh' in the main application to detect models.
                         else:
                             model_info["ram_usage"] = "Loaded"
                         
-                        # Try to extract GPU/CPU usage percentages
+                        # Try to extract CPU/GPU usage percentages
                         # Look for patterns like "38%/62%" or "GPU: 38% CPU: 62%"
                         gpu_cpu_patterns = [
                             r'(\d+)%[/\s]*(\d+)%',  # "38%/62%" or "38% 62%"
@@ -894,13 +1070,13 @@ Once installed, click 'Refresh' in the main application to detect models.
                                 gpu_pct = usage_match.group(1)
                                 cpu_pct = usage_match.group(2)
                                 model_info["gpu_cpu_usage"] = f"{gpu_pct}%/{cpu_pct}%"
-                                self.show_status_message(f"Found GPU/CPU usage: {model_info['gpu_cpu_usage']}")
+                                self.show_status_message(f"Found CPU/GPU usage: {model_info['gpu_cpu_usage']}")
                                 break
                         else:
                             # If no percentage found in ollama ps output, get system-wide usage
                             gpu_usage, cpu_usage = self.get_system_usage_info()
                             model_info["gpu_cpu_usage"] = f"{gpu_usage}%/{cpu_usage}%"
-                            self.show_status_message(f"System GPU/CPU usage: {model_info['gpu_cpu_usage']}")
+                            self.show_status_message(f"System CPU/GPU usage: {model_info['gpu_cpu_usage']}")
                         break
                 else:
                     model_info["ram_usage"] = "Loading"
@@ -932,7 +1108,7 @@ Once installed, click 'Refresh' in the main application to detect models.
             self.model_name_label.config(text=f"Selected model: {short_name}", foreground="green")
             self.model_size_label.config(text="Model size: Loading...", foreground="#1976D2")
             self.model_ram_label.config(text="RAM usage: Loading...", foreground="#1976D2")
-            self.model_usage_label.config(text="GPU/CPU usage: Loading...", foreground="#1976D2")
+            self.model_usage_label.config(text="CPU/GPU usage: Loading...", foreground="#1976D2")
             self.model_context_label.config(text="Context size: Loading...", foreground="#1976D2")
             return
         
@@ -951,7 +1127,7 @@ Once installed, click 'Refresh' in the main application to detect models.
         
         self.model_size_label.config(text=f"Model size: {model_info['size']}", foreground=size_color)
         self.model_ram_label.config(text=f"RAM usage: {model_info['ram_usage']}", foreground=ram_color)
-        self.model_usage_label.config(text=f"GPU/CPU usage: {model_info['gpu_cpu_usage']}", foreground=usage_color)
+        self.model_usage_label.config(text=f"CPU/GPU usage: {model_info['gpu_cpu_usage']}", foreground=usage_color)
         self.model_context_label.config(text=f"Context size: {model_info['context']}", foreground=context_color)
 
     def preload_model(self, model_name):

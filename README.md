@@ -28,20 +28,24 @@ Perfect for users who want the convenience of a desktop interface without the co
 - **Clean chat interface** with proper message formatting
 - **Automatic model loading** and status feedback
 
-### 🔧 **Server Management**
+### 🔧 **Smart Server Management**
 - **Automatic server startup** - no manual `ollama serve` needed
-- **Background server monitoring** with status updates
+- **Intelligent server detection** - knows if server was started by system or user
+- **Server restart functionality** - easily restart server in user context
+- **Background server monitoring** with real-time status updates
 - **Graceful shutdown** handling with process cleanup
 - **Path auto-detection** for various Ollama installations
 
-### 📊 **System Monitoring**
-- **Real-time system logs** showing all operations
+### 📊 **Advanced System Monitoring**
+- **Server status indicator** - shows if started by system or user with color coding
+- **Real-time system logs** showing all operations with detailed process information
 - **Model resource usage** (RAM, GPU/CPU percentages)
 - **Download progress tracking** with blue status indicators
 - **Loading states** for all operations
 
-### 🎨 **User Experience**
+### 🎨 **Professional User Experience**
 - **Two-panel layout** (350px controls + expandable chat)
+- **Server status section** with restart button for easy server management
 - **Professional UI** with 1400x900 window size
 - **Modal dialogs** for downloads and installation guides
 - **Keyboard shortcuts** (Enter to send, Escape to cancel)
@@ -102,6 +106,7 @@ Perfect for users who want the convenience of a desktop interface without the co
 - **Refresh**: Updates the model list from your Ollama installation
 - **Choose Model**: Loads the selected model for chatting
 - **Download**: Opens a dialog to download new models from Ollama's library
+- **Restart Ollama**: Restarts the Ollama server in user context (useful when models aren't visible)
 
 ### Chat Interface
 - Type messages after the `>>>` prompt
@@ -134,6 +139,7 @@ The left panel shows:
 - Download models using the **Download** button
 - Or manually: `ollama pull llama3`
 - Click **Refresh** to update the model list
+- If models still don't appear, try **Restart Ollama** to restart the server in user context
 
 **Chat not responding**
 - Ensure a model is selected and loaded (green status indicators)
