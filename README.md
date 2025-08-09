@@ -91,13 +91,52 @@ Perfect for users who want the convenience of a desktop interface without the co
 
 2. **First-time setup**:
    - The app will automatically detect and start the Ollama server
+   - Check server status above the model dropdown
    - If no models are found, use the **Download** button to get popular models
    - Try downloading: `llama3`, `mistral`, `codellama`, or `phi3`
 
 3. **Start chatting**:
    - Select a model from the dropdown
-   - Click **"Choose Model"** to load it
-   - Type your message after the `>>>` prompt
+   - Wait for model info to load (shows resource usage)
+   - Type your message in the input field
+   - Press **Enter** or click **Send** to chat
+
+## 🎮 Usage
+
+### **Starting the Application**
+```bash
+python3 Ollama_Tkinter_Ui.py
+```
+
+### **Server Management**
+- **Automatic Startup**: Server starts automatically when app opens
+- **Server Status**: Check status in the server section above model dropdown
+  - 🟢 "Started by user" (green) - server started in user context, all models visible
+  - 🔴 "Started by system" (red) - system-managed server, limited model visibility
+- **Restart Server**: Click "Restart Ollama" to restart in user context if needed
+
+### **Chatting with Models**
+1. **Select a model** from the dropdown (automatically populates with available models)
+2. **Wait for model info** to load (shows RAM usage, GPU/CPU utilization)
+3. **Type your message** in the input field
+4. **Press Enter** or click "Send" to chat
+5. **View responses** in the chat panel
+
+### **Downloading Models**
+1. Click **"Download"** button next to model dropdown
+2. **Enter model name** (e.g., `llama3.2`, `qwen2.5:7b`)
+3. **Watch progress** with real-time download tracking
+4. **Cancel anytime** if needed
+
+### **System Logs**
+- **Monitor operations** in the left panel log area
+- **Track downloads**, model loading, server status, and all system operations
+- **Debug information** available for troubleshooting
+
+### **Installation Guide**
+- Access via **Help > Installation Guide** menu
+- **Step-by-step** Ollama installation instructions
+- **Platform-specific** guidance for Linux, macOS, and Windows
    - Press **Enter** or click **Send Message**
 
 ## 📚 Usage Guide
@@ -109,18 +148,26 @@ Perfect for users who want the convenience of a desktop interface without the co
 - **Restart Ollama**: Restarts the Ollama server in user context (useful when models aren't visible)
 
 ### Chat Interface
-- Type messages after the `>>>` prompt
+- Type messages in the input field at the bottom
 - Press **Enter** to send messages quickly
-- The **Send Message** button provides an alternative to Enter key
+- The **Send** button provides an alternative to Enter key
 - Chat is automatically disabled during model downloads
+- Messages appear in the right panel with clear formatting
 
-### System Information
+### System Information & Monitoring
 The left panel shows:
-- **Selected model** name and status
-- **Model size** (e.g., "7B", "13B")
-- **RAM usage** when model is loaded
-- **GPU/CPU usage** percentages
-- **Context window** size (e.g., "4K", "8K")
+- **Server status** - whether started by user or system (with color coding)
+- **Selected model** name and loading status
+- **Model details** - size, RAM usage, GPU/CPU utilization, context window
+- **Real-time logs** - all operations, downloads, and system events
+- **Debug information** - process detection and server management details
+
+### Server Status Indicator
+Located above the model dropdown:
+- 🟢 **"Started by user"** (green) - optimal state, all models accessible
+- 🔴 **"Started by system"** (red) - system-managed, may have limited model access
+- **Restart button** - click to restart server in user context
+- **Real-time updates** - status changes automatically detected
 
 ## 🔧 Troubleshooting
 
@@ -133,7 +180,14 @@ The left panel shows:
 **Server won't start**
 - Try manually: `ollama serve`
 - Check if port 11434 is already in use
-- Restart the application
+- Use the **Restart Ollama** button to restart in user context
+- Check server status indicator above model dropdown
+
+**Server context issues (models not visible)**
+- 🔴 "Started by system" - server running but limited model access
+- Click **Restart Ollama** to restart server in user context
+- After restart, status should show 🟢 "Started by user"
+- This is the most common fix for model visibility issues
 
 **No models available**
 - Download models using the **Download** button
@@ -142,15 +196,22 @@ The left panel shows:
 - If models still don't appear, try **Restart Ollama** to restart the server in user context
 
 **Chat not responding**
-- Ensure a model is selected and loaded (green status indicators)
+- Ensure a model is selected and loaded (check model info display)
 - Check system logs in the left panel for error messages
 - Try reselecting the model
+- Verify server status is 🟢 "Started by user"
+
+**Model info not loading**
+- Wait for blue "Loading model info..." text to complete
+- Check if server is accessible (status indicator)
+- Try refreshing the model list
 
 ### Performance Tips
 - **Smaller models** (like `phi3`) are faster but less capable
 - **Larger models** (like `llama3:70b`) are more capable but slower
 - **GPU acceleration** significantly improves response times
 - **Close other applications** if experiencing memory issues
+- **User context servers** generally provide better model access than system servers
 
 ## 🏗️ Architecture
 
