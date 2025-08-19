@@ -2,6 +2,9 @@
 
 A **simple and convenient** Python-based graphical user interface for [Ollama](https://ollama.ai), providing essential CLI functionality through an intuitive desktop application.
 
+<img width="1404" height="964" alt="Screenshot from 2025-08-04 13-01-24" src="https://github.com/user-attachments/assets/b0c847c6-1ebf-4700-bcb1-2c304244bf8a" />
+
+
 ## 🚀 Overview
 
 This is an extremely simple yet powerful GUI wrapper for Ollama that makes it easy to:
