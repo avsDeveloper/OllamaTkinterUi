@@ -6,6 +6,8 @@ import subprocess
 import threading
 import time
 import os
+import requests
+import json
 
 class OllamaGUI:
     def __init__(self, root):
@@ -123,6 +125,20 @@ class OllamaGUI:
         self.chat_display.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
         self.chat_display.bind("<KeyPress>", self.on_chat_keypress)
         
+        # Model Response Timeout Configuration
+        response_timeout_frame = ttk.Frame(left_frame)
+        response_timeout_frame.pack(pady=(10, 10), fill=tk.X)
+
+        response_timeout_label = ttk.Label(response_timeout_frame, text="Model Response Timeout (s):")
+        response_timeout_label.pack(anchor='w')
+
+        self.response_timeout_var = tk.StringVar(value="60")  # Default timeout is 60 seconds
+        response_timeout_entry = ttk.Entry(response_timeout_frame, textvariable=self.response_timeout_var, width=10)
+        response_timeout_entry.pack(side=tk.LEFT, anchor='w', pady=(5, 0))
+
+        update_timeout_button = ttk.Button(response_timeout_frame, text="Set", command=self.update_response_timeout)
+        update_timeout_button.pack(side=tk.LEFT, anchor='w', padx=(5, 0), pady=(5, 0))
+
         # Send button (in right panel)
         self.send_button = ttk.Button(right_frame, text="Send Message", command=self.send_message_from_chat)
         self.send_button.pack(pady=(0, 5))
@@ -1272,6 +1288,19 @@ Once installed, click 'Refresh' in the main application to detect models.
         if not self.is_downloading:
             self.download_status_label.config(text="")
 
+    def update_response_timeout(self):
+        """Update the response timeout value."""
+        try:
+            timeout_value = int(self.response_timeout_var.get())
+            if timeout_value > 0:
+                self.show_status_message(f"Response timeout set to {timeout_value} seconds.")
+            else:
+                self.response_timeout_var.set("60")
+                messagebox.showwarning("Invalid Timeout", "Timeout must be a positive number.")
+        except ValueError:
+            self.response_timeout_var.set("60")
+            messagebox.showwarning("Invalid Input", "Please enter a valid number for the timeout.")
+
     def run_ollama_query(self, model, prompt):
         """Query Ollama and update GUI with response."""
         if not self.ollama_path:
@@ -1279,30 +1308,56 @@ Once installed, click 'Refresh' in the main application to detect models.
             self.root.after(0, self.setup_user_input_prompt)
             self.root.after(0, lambda: self.send_button.config(state='normal'))
             return
-            
+
         try:
-            cmd = [self.ollama_path, "run", model, prompt]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-            
-            if result.returncode == 0:
-                response = result.stdout.strip()
-                self.root.after(0, lambda: self.chat_display.insert(tk.END, f"{response}\n\n"))
-            else:
-                error_msg = result.stderr.strip() or "Unknown error occurred"
-                self.root.after(0, lambda: self.chat_display.insert(tk.END, f"Error: {error_msg}\n\n"))
+            timeout = int(self.response_timeout_var.get())
+        except ValueError:
+            timeout = 60
+
+        def query():
+            try:
+                url = "http://localhost:11434/api/generate"
+                payload = {
+                    "model": model,
+                    "prompt": prompt,
+                    "stream": True
+                }
                 
-            self.root.after(0, lambda: self.chat_display.see(tk.END))
-            self.root.after(0, self.setup_user_input_prompt)
-            self.root.after(0, lambda: self.send_button.config(state='normal'))
-            
-        except subprocess.TimeoutExpired:
-            self.root.after(0, lambda: self.chat_display.insert(tk.END, "Error: Request timed out\n\n"))
-            self.root.after(0, self.setup_user_input_prompt)
-            self.root.after(0, lambda: self.send_button.config(state='normal'))
-        except Exception as e:
-            self.root.after(0, lambda: self.chat_display.insert(tk.END, f"Error: {str(e)}\n\n"))
-            self.root.after(0, self.setup_user_input_prompt)
-            self.root.after(0, lambda: self.send_button.config(state='normal'))
+                with requests.post(url, json=payload, stream=True, timeout=timeout) as response:
+                    response.raise_for_status()
+                    for line in response.iter_lines():
+                        if line:
+                            try:
+                                data = json.loads(line)
+                                chunk = data.get("response", "")
+                                self.root.after(0, self.update_chat_with_response, chunk)
+                                if data.get("done"):
+                                    break
+                            except json.JSONDecodeError:
+                                continue
+                self.root.after(0, self.finalize_chat_response)
+            except requests.exceptions.Timeout:
+                self.root.after(0, lambda: self.update_chat_with_response("\\nError: Request timed out.\\n"))
+                self.root.after(0, self.finalize_chat_response)
+            except requests.exceptions.RequestException as e:
+                self.root.after(0, lambda: self.update_chat_with_response(f"\\nError: {str(e)}\\n"))
+                self.root.after(0, self.finalize_chat_response)
+            except Exception as e:
+                self.root.after(0, lambda: self.update_chat_with_response(f"\\nAn unexpected error occurred: {str(e)}\\n"))
+                self.root.after(0, self.finalize_chat_response)
+
+        threading.Thread(target=query, daemon=True).start()
+
+    def update_chat_with_response(self, chunk):
+        """Append a chunk of the model's response to the chat display."""
+        self.chat_display.insert(tk.END, chunk)
+        self.chat_display.see(tk.END)
+
+    def finalize_chat_response(self):
+        """Finalize the chat response by adding newlines and setting up the next prompt."""
+        self.chat_display.insert(tk.END, "\\n\\n")
+        self.setup_user_input_prompt()
+        self.send_button.config(state='normal')
 
     def on_closing(self):
         """Handle application closing - cleanup processes."""
@@ -1328,6 +1383,13 @@ Once installed, click 'Refresh' in the main application to detect models.
             self.root.destroy()
 
 if __name__ == "__main__":
+    import re
+    import random
+    try:
+        import psutil
+    except ImportError:
+        psutil = None
+
     root = tk.Tk()
     app = OllamaGUI(root)
     root.mainloop()
