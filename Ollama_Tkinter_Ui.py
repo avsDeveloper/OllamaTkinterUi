@@ -337,13 +337,10 @@ class OllamaGUI:
             
         if not self.is_ollama_server_running():
             self.server_status_label.config(text="Server Status: Not running", foreground="red")
-            self.show_status_message("Status update: Server not running")
         elif self.server_started_by_user:
             self.server_status_label.config(text="Server Status: Started by user", foreground="green")
-            self.show_status_message(f"Status update: Started by user (flag={self.server_started_by_user})")
         else:
             self.server_status_label.config(text="Server Status: Started by system", foreground="orange")
-            self.show_status_message(f"Status update: Started by system (flag={self.server_started_by_user})")
     
     def on_server_started(self):
         """Handle server start event"""
@@ -358,7 +355,6 @@ class OllamaGUI:
             # Don't override if already set to True by auto_start_server
             if not hasattr(self, 'server_started_by_user') or not self.server_started_by_user:
                 self.server_started_by_user = True
-            self.show_status_message(f"GUI started server - server_started_by_user: {self.server_started_by_user}")
         self.update_server_status_display()
         self.refresh_models()
     
