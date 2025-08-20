@@ -139,6 +139,16 @@ class OllamaGUI:
         update_timeout_button = ttk.Button(response_timeout_frame, text="Set", command=self.update_response_timeout)
         update_timeout_button.pack(side=tk.LEFT, anchor='w', padx=(5, 0), pady=(5, 0))
 
+        # Show thinking toggle
+        thinking_frame = ttk.Frame(left_frame)
+        thinking_frame.pack(pady=(5, 10), fill=tk.X)
+        
+        self.show_thinking_var = tk.BooleanVar(value=False)  # Default: hide thinking
+        thinking_checkbox = ttk.Checkbutton(thinking_frame, 
+                                          text="Show model reasoning (<think> tags)", 
+                                          variable=self.show_thinking_var)
+        thinking_checkbox.pack(anchor='w')
+
         # Send button (in right panel)
         self.send_button = ttk.Button(right_frame, text="Send Message", command=self.send_message_from_chat)
         self.send_button.pack(pady=(0, 5))
@@ -158,6 +168,7 @@ class OllamaGUI:
         self.downloading_model = None  # Track which model is being downloaded
         self.is_downloading = False  # Track download state
         self.server_started_by_user = False  # Track if server was started by this GUI
+        self.current_response = ""  # Accumulate streaming response for filtering
         
         # Handle window close
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -1252,9 +1263,12 @@ Once installed, click 'Refresh' in the main application to detect models.
             # Disable send button during processing
             self.send_button.config(state='disabled')
             
-            # Add newline after user input and show it's being processed
-            self.chat_display.insert(tk.END, f"\n\nAssistant: ")
+            # Add newline after user input and show AI response prompt
+            self.chat_display.insert(tk.END, f"\n\nAI: ")
             self.chat_display.see(tk.END)
+            
+            # Reset response accumulator
+            self.current_response = ""
             
             def run_query():
                 self.run_ollama_query(self.selected_model, user_text)
@@ -1337,25 +1351,100 @@ Once installed, click 'Refresh' in the main application to detect models.
                                 continue
                 self.root.after(0, self.finalize_chat_response)
             except requests.exceptions.Timeout:
-                self.root.after(0, lambda: self.update_chat_with_response("\\nError: Request timed out.\\n"))
+                self.root.after(0, lambda: self.update_chat_with_response("\nError: Request timed out.\n"))
                 self.root.after(0, self.finalize_chat_response)
             except requests.exceptions.RequestException as e:
-                self.root.after(0, lambda: self.update_chat_with_response(f"\\nError: {str(e)}\\n"))
+                self.root.after(0, lambda: self.update_chat_with_response(f"\nError: {str(e)}\n"))
                 self.root.after(0, self.finalize_chat_response)
             except Exception as e:
-                self.root.after(0, lambda: self.update_chat_with_response(f"\\nAn unexpected error occurred: {str(e)}\\n"))
+                self.root.after(0, lambda: self.update_chat_with_response(f"\nAn unexpected error occurred: {str(e)}\n"))
                 self.root.after(0, self.finalize_chat_response)
 
         threading.Thread(target=query, daemon=True).start()
 
+    def filter_thinking_tags(self, text):
+        """Filter out <think> and </think> tags and their content from model responses."""
+        # If user wants to see thinking, return text as-is
+        if self.show_thinking_var.get():
+            return text
+            
+        import re
+        
+        # Remove complete <think>...</think> blocks
+        text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
+        
+        # Remove standalone opening or closing tags
+        text = re.sub(r'</?think>', '', text)
+        
+        return text
+
     def update_chat_with_response(self, chunk):
         """Append a chunk of the model's response to the chat display."""
+        # Accumulate the response
+        self.current_response += chunk
+        
+        # If thinking is disabled, we need to be smart about filtering
+        if not self.show_thinking_var.get():
+            # Check if we're inside a thinking block
+            if '<think>' in self.current_response and '</think>' not in self.current_response:
+                # We're inside a thinking block, don't display anything yet
+                return
+            elif '<think>' in chunk or '</think>' in chunk:
+                # This chunk contains thinking tags, filter the entire accumulated response
+                # and update display accordingly
+                filtered_response = self.filter_thinking_tags(self.current_response)
+                
+                # Clear the AI response area and re-insert the filtered content
+                content = self.chat_display.get("1.0", tk.END)
+                lines = content.split('\n')
+                
+                # Find the last "AI: " prompt
+                ai_line_index = -1
+                for i, line in enumerate(lines):
+                    if line.strip().startswith("AI: "):
+                        ai_line_index = i
+                
+                if ai_line_index >= 0:
+                    # Calculate position after "AI: "
+                    ai_line_start = f"{ai_line_index + 1}.0"
+                    ai_content_start = f"{ai_line_index + 1}.4"  # After "AI: "
+                    
+                    # Delete everything after "AI: " and insert filtered response
+                    self.chat_display.delete(ai_content_start, tk.END)
+                    self.chat_display.insert(ai_content_start, filtered_response)
+                    self.chat_display.see(tk.END)
+                return
+        
+        # Normal case: either thinking is enabled or no thinking tags in chunk
         self.chat_display.insert(tk.END, chunk)
         self.chat_display.see(tk.END)
 
     def finalize_chat_response(self):
         """Finalize the chat response by adding newlines and setting up the next prompt."""
-        self.chat_display.insert(tk.END, "\\n\\n")
+        # Apply final filtering if thinking is disabled
+        if not self.show_thinking_var.get() and self.current_response:
+            filtered_response = self.filter_thinking_tags(self.current_response)
+            
+            # If the filtered response is different, update the display
+            if filtered_response != self.current_response:
+                content = self.chat_display.get("1.0", tk.END)
+                lines = content.split('\n')
+                
+                # Find the last "AI: " prompt
+                ai_line_index = -1
+                for i, line in enumerate(lines):
+                    if line.strip().startswith("AI: "):
+                        ai_line_index = i
+                
+                if ai_line_index >= 0:
+                    # Calculate position after "AI: "
+                    ai_content_start = f"{ai_line_index + 1}.4"  # After "AI: "
+                    
+                    # Delete everything after "AI: " and insert filtered response
+                    self.chat_display.delete(ai_content_start, tk.END)
+                    self.chat_display.insert(ai_content_start, filtered_response)
+        
+        self.chat_display.insert(tk.END, "\n\n")
         self.setup_user_input_prompt()
         self.send_button.config(state='normal')
 
