@@ -8,6 +8,7 @@ import time
 import os
 import requests
 import json
+import re
 
 class OllamaGUI:
     def __init__(self, root):
@@ -159,6 +160,11 @@ class OllamaGUI:
         self.stop_button = ttk.Button(button_frame, text="Stop", command=self.stop_generation, state='disabled')
         self.stop_button.pack(side=tk.LEFT)
         
+        # Token counter display (bottom-right)
+        self.token_counter_label = ttk.Label(button_frame, text="Tokens: 0 / 0", 
+                                           font=('Arial', 10, 'bold'), foreground="gray")
+        self.token_counter_label.pack(side=tk.RIGHT, padx=(10, 0))
+        
         # Initialize Ollama
         self.initialize_ollama()
 
@@ -177,6 +183,14 @@ class OllamaGUI:
         self.current_response = ""  # Accumulate streaming response for filtering
         self.current_request = None  # Track current HTTP request for cancellation
         self.is_generating = False  # Track if model is generating response
+        
+        # Token tracking variables
+        self.current_chat_tokens = 0  # Tokens used in current conversation
+        self.max_context_tokens = 0  # Maximum context window for current model
+        self.conversation_history = []  # Store conversation for token counting
+        
+        # Initialize token counter display
+        self.update_token_counter()
         
         # Handle window close
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -1162,6 +1176,24 @@ Once installed, click 'Refresh' in the main application to detect models.
         self.model_ram_label.config(text=f"RAM usage: {model_info['ram_usage']}", foreground=ram_color)
         self.model_usage_label.config(text=f"CPU/GPU usage: {model_info['gpu_cpu_usage']}", foreground=usage_color)
         self.model_context_label.config(text=f"Context size: {model_info['context']}", foreground=context_color)
+        
+        # Extract and store max context tokens for token counter
+        context_str = model_info['context']
+        if context_str not in ["Unknown", "Loading...", "Error"]:
+            try:
+                if 'K' in context_str:
+                    # Handle "4K", "8K", etc.
+                    self.max_context_tokens = int(context_str.replace('K', '')) * 1000
+                else:
+                    # Handle raw numbers
+                    self.max_context_tokens = int(context_str)
+            except (ValueError, AttributeError):
+                self.max_context_tokens = 4096  # Default fallback
+        else:
+            self.max_context_tokens = 4096  # Default fallback
+        
+        # Update token counter display
+        self.update_token_counter()
 
     def preload_model(self, model_name):
         """Pre-load the model to make it ready for immediate use."""
@@ -1204,6 +1236,9 @@ Once installed, click 'Refresh' in the main application to detect models.
             self.stop_generation()
         
         self.selected_model = selected
+        
+        # Reset conversation history for new model
+        self.reset_conversation_history()
         
         # Show loading state immediately
         self.update_model_details(selected, loading=True)
@@ -1292,6 +1327,9 @@ Once installed, click 'Refresh' in the main application to detect models.
             if not user_text:
                 self.show_status_message("⚠️ Please type a message after the >>> prompt")
                 return
+            
+            # Add user message to conversation history for token tracking
+            self.add_to_conversation_history("user", user_text)
             
             # Disable send button and enable stop button during processing
             self.send_button.config(state='disabled')
@@ -1417,8 +1455,6 @@ Once installed, click 'Refresh' in the main application to detect models.
         # If user wants to see thinking, return text as-is
         if self.show_thinking_var.get():
             return text
-            
-        import re
         
         # Remove complete <think>...</think> blocks
         text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
@@ -1497,6 +1533,14 @@ Once installed, click 'Refresh' in the main application to detect models.
         self.chat_display.insert(tk.END, "\n\n")
         self.setup_user_input_prompt()
         
+        # Add AI response to conversation history for token tracking
+        if self.current_response:
+            # Use filtered response if thinking is disabled
+            response_to_track = self.current_response
+            if not self.show_thinking_var.get():
+                response_to_track = self.filter_thinking_tags(self.current_response)
+            self.add_to_conversation_history("assistant", response_to_track)
+        
         # Reset button states
         self.send_button.config(state='normal')
         self.stop_button.config(state='disabled')
@@ -1526,6 +1570,86 @@ Once installed, click 'Refresh' in the main application to detect models.
         finally:
             self.root.destroy()
 
+    def estimate_token_count(self, text):
+        """Estimate token count for a given text using simple heuristics."""
+        if not text:
+            return 0
+        
+        # Simple estimation: ~4 characters per token on average for English text
+        # This is a rough approximation, real tokenizers are more complex
+        # but this gives a reasonable estimate for UI purposes
+        
+        # Remove extra whitespace and count words
+        words = text.split()
+        word_count = len(words)
+        
+        # Estimate tokens: roughly 0.75 tokens per word for English
+        # Add some padding for punctuation and special tokens
+        estimated_tokens = int(word_count * 0.75) + max(1, len(text) // 100)
+        
+        return max(1, estimated_tokens)  # Minimum 1 token
+    
+    def update_token_counter(self):
+        """Update the token counter display with current usage."""
+        if not self.selected_model or self.max_context_tokens == 0:
+            self.token_counter_label.config(text="Tokens: 0 / 0", foreground="gray")
+            return
+        
+        # Calculate tokens used in current conversation
+        total_tokens = 0
+        for message in self.conversation_history:
+            total_tokens += self.estimate_token_count(message.get('content', ''))
+        
+        self.current_chat_tokens = total_tokens
+        
+        # Calculate percentage used
+        if self.max_context_tokens > 0:
+            usage_percentage = (total_tokens / self.max_context_tokens) * 100
+            remaining_tokens = self.max_context_tokens - total_tokens
+            
+            # Format numbers for display
+            if self.max_context_tokens >= 1000:
+                max_display = f"{self.max_context_tokens // 1000}K"
+            else:
+                max_display = str(self.max_context_tokens)
+            
+            # Set color based on usage - more conservative thresholds
+            if usage_percentage < 60:
+                color = "green"
+            elif usage_percentage < 80:
+                color = "orange"  
+            else:
+                color = "red"
+            
+            # Add warning icon for high usage
+            warning = ""
+            if usage_percentage >= 90:
+                warning = " ⚠️"
+            elif usage_percentage >= 80:
+                warning = " ⚡"
+            
+            self.token_counter_label.config(
+                text=f"Tokens: {total_tokens} / {max_display}{warning}",
+                foreground=color
+            )
+        else:
+            self.token_counter_label.config(text=f"Tokens: {total_tokens}", foreground="gray")
+    
+    def reset_conversation_history(self):
+        """Reset the conversation history and token counter."""
+        self.conversation_history = []
+        self.current_chat_tokens = 0
+        self.update_token_counter()
+    
+    def add_to_conversation_history(self, role, content):
+        """Add a message to the conversation history for token tracking."""
+        if content.strip():  # Only add non-empty messages
+            self.conversation_history.append({
+                'role': role,
+                'content': content.strip()
+            })
+            self.update_token_counter()
+    
 if __name__ == "__main__":
     import re
     import random
