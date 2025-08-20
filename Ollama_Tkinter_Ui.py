@@ -150,8 +150,14 @@ class OllamaGUI:
         thinking_checkbox.pack(anchor='w')
 
         # Send button (in right panel)
-        self.send_button = ttk.Button(right_frame, text="Send Message", command=self.send_message_from_chat)
-        self.send_button.pack(pady=(0, 5))
+        button_frame = ttk.Frame(right_frame)
+        button_frame.pack(pady=(0, 5))
+        
+        self.send_button = ttk.Button(button_frame, text="Send Message", command=self.send_message_from_chat)
+        self.send_button.pack(side=tk.LEFT, padx=(0, 5))
+        
+        self.stop_button = ttk.Button(button_frame, text="Stop", command=self.stop_generation, state='disabled')
+        self.stop_button.pack(side=tk.LEFT)
         
         # Initialize Ollama
         self.initialize_ollama()
@@ -169,6 +175,8 @@ class OllamaGUI:
         self.is_downloading = False  # Track download state
         self.server_started_by_user = False  # Track if server was started by this GUI
         self.current_response = ""  # Accumulate streaming response for filtering
+        self.current_request = None  # Track current HTTP request for cancellation
+        self.is_generating = False  # Track if model is generating response
         
         # Handle window close
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -670,6 +678,7 @@ Once installed, click 'Refresh' in the main application to detect models.
         self.download_status_label.config(text=f"📥 Downloading {model_name}...")
         self.download_button.config(text="Cancel", command=self.cancel_download)
         self.send_button.config(state='disabled')  # Disable chat during download
+        self.stop_button.config(state='disabled')  # Disable stop during download
         
         self.show_status_message(f"Starting download of model '{model_name}'...")
         
@@ -773,6 +782,7 @@ Once installed, click 'Refresh' in the main application to detect models.
         self.download_status_label.config(text="")
         self.download_button.config(text="Download", command=self.show_download_dialog)
         self.send_button.config(state='normal')  # Re-enable chat
+        self.stop_button.config(state='disabled')  # Keep stop disabled when not generating
 
     def auto_start_server(self):
         """Automatically start the Ollama server if not running."""
@@ -1189,6 +1199,10 @@ Once installed, click 'Refresh' in the main application to detect models.
             messagebox.showwarning("No Model Selected", "Please select a model from the dropdown.")
             return
         
+        # If currently generating, stop the generation first
+        if self.is_generating:
+            self.stop_generation()
+        
         self.selected_model = selected
         
         # Show loading state immediately
@@ -1217,6 +1231,29 @@ Once installed, click 'Refresh' in the main application to detect models.
         self.chat_display.insert(tk.END, ">>> ")
         self.chat_display.focus()
         self.chat_display.see(tk.END)
+
+    def stop_generation(self):
+        """Stop the current model response generation."""
+        if not self.is_generating:
+            return
+            
+        self.is_generating = False  # Set this first to prevent error messages
+        
+        if self.current_request:
+            try:
+                # Close the current HTTP request
+                self.current_request.close()
+                self.current_request = None
+                self.show_status_message("⏹️ Response generation stopped by user")
+                
+                # Add a message to the chat indicating the stop
+                self.chat_display.insert(tk.END, "\n[Response stopped by user]")
+                
+            except Exception as e:
+                self.show_status_message(f"Error stopping generation: {str(e)}")
+        
+        # Reset state and setup new prompt regardless of whether there was an error
+        self.finalize_chat_response()
 
     def on_chat_keypress(self, event):
         """Handle key presses in the chat display."""
@@ -1256,8 +1293,10 @@ Once installed, click 'Refresh' in the main application to detect models.
                 self.show_status_message("⚠️ Please type a message after the >>> prompt")
                 return
             
-            # Disable send button during processing
+            # Disable send button and enable stop button during processing
             self.send_button.config(state='disabled')
+            self.stop_button.config(state='normal')
+            self.is_generating = True
             
             # Add newline after user input and show AI response prompt
             self.chat_display.insert(tk.END, f"\n\nAI: ")
@@ -1276,6 +1315,8 @@ Once installed, click 'Refresh' in the main application to detect models.
             self.show_status_message(f"Error sending message: {str(e)}")
             self.setup_user_input_prompt()
             self.send_button.config(state='normal')
+            self.stop_button.config(state='disabled')
+            self.is_generating = False
 
     def refresh_models(self):
         """Refresh the model dropdown with current Ollama models."""
@@ -1317,6 +1358,8 @@ Once installed, click 'Refresh' in the main application to detect models.
             self.root.after(0, lambda: self.chat_display.insert(tk.END, "Error: Ollama not found\n\n"))
             self.root.after(0, self.setup_user_input_prompt)
             self.root.after(0, lambda: self.send_button.config(state='normal'))
+            self.root.after(0, lambda: self.stop_button.config(state='disabled'))
+            self.root.after(0, lambda: setattr(self, 'is_generating', False))
             return
 
         try:
@@ -1333,7 +1376,10 @@ Once installed, click 'Refresh' in the main application to detect models.
                     "stream": True
                 }
                 
-                with requests.post(url, json=payload, stream=True, timeout=timeout) as response:
+                # Store the request for potential cancellation
+                self.current_request = requests.post(url, json=payload, stream=True, timeout=timeout)
+                
+                with self.current_request as response:
                     response.raise_for_status()
                     for line in response.iter_lines():
                         if line:
@@ -1350,11 +1396,19 @@ Once installed, click 'Refresh' in the main application to detect models.
                 self.root.after(0, lambda: self.update_chat_with_response("\nError: Request timed out.\n"))
                 self.root.after(0, self.finalize_chat_response)
             except requests.exceptions.RequestException as e:
+                # Check if it was a user-initiated cancellation
+                if not self.is_generating:
+                    return  # User stopped the generation, don't show error
                 self.root.after(0, lambda: self.update_chat_with_response(f"\nError: {str(e)}\n"))
                 self.root.after(0, self.finalize_chat_response)
             except Exception as e:
+                if not self.is_generating:
+                    return  # User stopped the generation, don't show error
                 self.root.after(0, lambda: self.update_chat_with_response(f"\nAn unexpected error occurred: {str(e)}\n"))
                 self.root.after(0, self.finalize_chat_response)
+            finally:
+                # Clean up the request reference
+                self.current_request = None
 
         threading.Thread(target=query, daemon=True).start()
 
@@ -1442,7 +1496,12 @@ Once installed, click 'Refresh' in the main application to detect models.
         
         self.chat_display.insert(tk.END, "\n\n")
         self.setup_user_input_prompt()
+        
+        # Reset button states
         self.send_button.config(state='normal')
+        self.stop_button.config(state='disabled')
+        self.is_generating = False
+        self.current_request = None
 
     def on_closing(self):
         """Handle application closing - cleanup processes."""
