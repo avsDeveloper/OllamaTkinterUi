@@ -13,7 +13,7 @@ import re
 class OllamaGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("Ollama Chat")
+        self.root.title("Tkinter GUI for Ollama")
         self.root.geometry("1400x900")
 
         # Menu bar
@@ -28,13 +28,17 @@ class OllamaGUI:
         main_frame = ttk.Frame(root)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
+        # Content frame for left and right panels
+        content_frame = ttk.Frame(main_frame)
+        content_frame.pack(fill=tk.BOTH, expand=True)
+        
         # Left panel for controls and logs
-        left_frame = ttk.Frame(main_frame, width=350)
+        left_frame = ttk.Frame(content_frame, width=350)
         left_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10))
         left_frame.pack_propagate(False)  # Maintain fixed width
         
         # Right panel for chat
-        right_frame = ttk.Frame(main_frame)
+        right_frame = ttk.Frame(content_frame)
         right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
 
         # Server Status Section (in left panel)
@@ -168,6 +172,21 @@ class OllamaGUI:
         self.token_counter_label = ttk.Label(button_frame, text="Tokens: 0 / 0", 
                                            font=('Arial', 10, 'bold'), foreground="gray")
         self.token_counter_label.pack(side=tk.RIGHT, padx=(10, 0))
+        
+        # Attribution text (bottom-right corner of main window)
+        attribution_label = ttk.Label(main_frame, 
+                                    text="Powered by Ollama", 
+                                    font=('Arial', 9, 'italic'), 
+                                    foreground="#666666")
+        attribution_label.pack(side=tk.BOTTOM, anchor='se', padx=(0, 10), pady=(0, 5))
+        
+        def open_ollama_website(event):
+            import webbrowser
+            webbrowser.open("https://ollama.ai")
+        
+        attribution_label.bind("<Button-1>", open_ollama_website)
+        attribution_label.bind("<Enter>", lambda e: attribution_label.config(foreground="#1976D2", cursor="hand2"))
+        attribution_label.bind("<Leave>", lambda e: attribution_label.config(foreground="#666666", cursor=""))
         
         # Initialize Ollama
         self.initialize_ollama()

@@ -1,6 +1,8 @@
-# Ollama Chat - Desktop GUI
+# Tkinter GUI for Ollama
 
 A **powerful and comprehensive** Python-based graphical user interface for [Ollama](https://ollama.ai), providing professional-grade AI chat functionality with advanced features including intelligent model download dialogs, system compatibility checking, real-time token tracking, response control, and sophisticated server management.
+
+**Proudly powered by [Ollama](https://ollama.ai)** 🚀
 
 > **Note**: This is an independent third-party GUI client for Ollama. This project is not officially affiliated with or endorsed by Ollama. Ollama is a trademark of its respective owners.
 
