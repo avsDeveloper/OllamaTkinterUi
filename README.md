@@ -6,7 +6,8 @@ A **powerful and comprehensive** Python-based graphical user interface for [Olla
 
 > **Note**: This is an independent third-party GUI client for Ollama. This project is not officially affiliated with or endorsed by Ollama. Ollama is a trademark of its respective owners.
 
-<img width="1404" height="964" alt="Screenshot from 2025-08-04 13-01-24" src="https://github.com/user-attachments/assets/b0c847c6-1ebf-4700-bcb1-2c304244bf8a" />
+<img width="1402" height="967" alt="Screenshot from 2025-08-24 22-18-06" src="https://github.com/user-attachments/assets/6687c1e5-3377-4f90-a006-84539aeacf6b" />
+
 
 ## 🚀 Overview
 
