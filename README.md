@@ -1,6 +1,6 @@
 # Tkinter GUI for Ollama
 
-A **powerful and comprehensive** Python-based graphical user interface for [Ollama](https://ollama.ai), providing professional-grade AI chat functionality with advanced features including intelligent model download dialogs, system compatibility checking, real-time token tracking, response control, and sophisticated server management.
+A **powerful and comprehensive** Python-based graphical user interface for [Ollama](https://ollama.ai), providing advanced AI chat functionality with features including intelligent model download dialogs, system compatibility checking, real-time token tracking, response control, and sophisticated server management.
 
 **Proudly powered by [Ollama](https://ollama.ai)** 🚀
 
@@ -11,7 +11,7 @@ A **powerful and comprehensive** Python-based graphical user interface for [Olla
 
 ## 🚀 Overview
 
-This is a **comprehensive and professional** GUI wrapper for Ollama that provides enterprise-grade features while maintaining ease of use:
+This is a **comprehensive and feature-rich** GUI wrapper for Ollama that provides enterprise-grade features while maintaining ease of use:
 
 ### 🎯 **Core Capabilities**
 - **Smart Server Management** - Automatic start/stop with user context detection
@@ -24,7 +24,7 @@ This is a **comprehensive and professional** GUI wrapper for Ollama that provide
 - **Status Management** - Comprehensive logging with intelligent filtering
 
 ### 🏆 **What Makes This Special**
-Perfect for users who need **professional-grade AI tools** with advanced features like system compatibility checking, background download management, real-time resource monitoring, and sophisticated conversation management, all wrapped in an intuitive desktop interface.
+Perfect for users who need **advanced AI tools** with features like system compatibility checking, background download management, real-time resource monitoring, and sophisticated conversation management, all wrapped in an intuitive desktop interface.
 
 ## ✨ Features
 
@@ -144,13 +144,50 @@ Perfect for users who need **professional-grade AI tools** with advanced feature
 
 ## 📦 Installation
 
-1. **Install Ollama** (if not already installed):
+1. **Install Python 3.6+ and tkinter** (if not already installed):
+
+   **Ubuntu/Debian:**
+   ```bash
+   sudo apt update
+   sudo apt install python3 python3-tk python3-pip
+   ```
+
+   **Fedora/RHEL/CentOS:**
+   ```bash
+   sudo dnf install python3 python3-tkinter python3-pip
+   # or for older versions:
+   sudo yum install python3 python3-tkinter python3-pip
+   ```
+
+   **Arch Linux:**
+   ```bash
+   sudo pacman -S python python-pip tk
+   ```
+
+   **macOS:**
+   ```bash
+   # Install via Homebrew
+   brew install python-tk
+   # or Python should come with tkinter by default
+   ```
+
+   **Windows:**
+   - Download Python from https://python.org (tkinter included by default)
+   - Or install via Microsoft Store: "Python 3.x"
+
+   **Verify installation:**
+   ```bash
+   python3 --version
+   python3 -c "import tkinter; print('tkinter is available')"
+   ```
+
+2. **Install Ollama** (if not already installed):
    ```bash
    curl -fsSL https://ollama.ai/install.sh | sh
    ```
    Or visit the [official Ollama website](https://ollama.ai) for platform-specific installation instructions.
 
-2. **Download the GUI**:
+3. **Download the GUI**:
    ```bash
    wget https://github.com/avsDeveloper/OllamaTkinterUi/raw/main/Ollama_Tkinter_Ui.py
    # OR clone the repository
@@ -158,7 +195,7 @@ Perfect for users who need **professional-grade AI tools** with advanced feature
    cd OllamaTkinterUi
    ```
 
-3. **Make executable and run**:
+4. **Make executable and run**:
    ```bash
    chmod +x Ollama_Tkinter_Ui.py
    python3 Ollama_Tkinter_Ui.py
@@ -482,7 +519,7 @@ This GUI is built with enterprise-grade architecture:
 ### **Key Technical Components**
 
 #### **OllamaGUI Class** - Main Application Controller
-- **Comprehensive Feature Set** - 2,500+ lines of professional-grade code
+- **Comprehensive Feature Set** - 2,500+ lines of feature-rich code
 - **Token Management System** - Real-time conversation tracking and context monitoring
 - **Server Management Engine** - Intelligent Ollama server detection and control
 - **Response Control System** - Stop generation and timeout management with HTTP cancellation
