@@ -73,7 +73,11 @@ class OllamaGUI:
         self.choose_button = ttk.Button(buttons_frame, text="Choose Model", command=self.choose_model)
         self.choose_button.pack(side=tk.LEFT)
         
-        self.download_button = ttk.Button(buttons_frame, text="Download", command=self.show_download_dialog)
+        # Add download state tracking
+        self.is_downloading = False
+        self.downloading_model = None
+        
+        self.download_button = ttk.Button(buttons_frame, text="Download", command=self.start_download_action)
         self.download_button.pack(side=tk.LEFT, padx=(5, 0))
         
         # Download status label
@@ -189,6 +193,9 @@ class OllamaGUI:
         self.max_context_tokens = 0  # Maximum context window for current model
         self.conversation_history = []  # Store conversation for token counting
         
+        # Model information cache
+        self.model_info_cache = {}  # Cache for model size and info
+        
         # Initialize token counter display
         self.update_token_counter()
         
@@ -275,6 +282,8 @@ class OllamaGUI:
     def is_ollama_server_running(self):
         """Check if Ollama server is running"""
         try:
+            if not self.ollama_path:
+                return False
             subprocess.run([self.ollama_path, "list"], 
                          check=True, capture_output=True, text=True, timeout=5)
             return True
@@ -611,6 +620,203 @@ Once installed, click 'Refresh' in the main application to detect models.
         # Handle window close with Escape key
         guide_window.bind('<Escape>', lambda e: guide_window.destroy())
 
+    def get_model_details_from_page(self, model_name):
+        """Scrape detailed model information from ollama.com individual model page."""
+        try:
+            import re
+            url = f"https://ollama.com/library/{model_name}"
+            response = requests.get(url, timeout=10)
+            if response.status_code == 200:
+                content = response.text
+                
+                # Extract parameter sizes
+                size_pattern = r'x-test-size[^>]*>([^<]+)'
+                sizes = re.findall(size_pattern, content)
+                
+                # Extract download count (pull count)
+                pull_pattern = r'x-test-pull-count>([^<]+)'
+                pull_match = re.search(pull_pattern, content)
+                pull_count = pull_match.group(1) if pull_match else None
+                
+                # Extract last updated
+                updated_pattern = r'x-test-updated>([^<]+)'
+                updated_match = re.search(updated_pattern, content)
+                last_updated = updated_match.group(1) if updated_match else None
+                
+                # Extract capabilities (tools, vision, embedding, thinking)
+                capabilities = []
+                # Look for capability badges in the HTML - they use bg-indigo-50 class
+                capability_pattern = r'bg-indigo-50[^>]*>([^<]+)</span>'
+                capability_matches = re.findall(capability_pattern, content)
+                
+                for capability in capability_matches:
+                    capability = capability.strip().lower()
+                    if capability in ['tools', 'vision', 'embedding', 'thinking']:
+                        capabilities.append(capability)
+                
+                return {
+                    'sizes': sizes,
+                    'pull_count_display': pull_count,
+                    'last_updated': last_updated,
+                    'capabilities': capabilities,
+                    'url': url
+                }
+        except Exception as e:
+            self.show_status_message(f"Failed to scrape {model_name}: {str(e)}")
+        return None
+
+    def get_available_models(self):
+        """Fetch list of available models from Ollama registry."""
+        self.show_status_message("Starting model fetch from Ollama APIs...")
+        all_models = {}  # Use dict to store models with their info: {name: {size: ..., description: ...}}
+        
+        # Try Ollama-specific API endpoint from ollamadb.dev (comprehensive official models)
+        api_endpoints = [
+            ("https://ollamadb.dev/api/v1/models?limit=200", "OllamaDB.dev Official Models"),
+            ("https://ollama.ai/api/tags", "Primary Ollama API")
+        ]
+        
+        for url, name in api_endpoints:
+            try:
+                self.show_status_message(f"Trying {name}: {url}")
+                response = requests.get(url, timeout=8)
+                if response.status_code == 200:
+                    data = response.json()
+                    models_found = 0
+                    
+                    # Handle OllamaDB.dev API format
+                    if isinstance(data, dict) and 'models' in data and isinstance(data['models'], list):
+                        model_list = data['models']
+                        for model in model_list:
+                            if isinstance(model, dict) and 'model_name' in model:
+                                model_name = model['model_name']
+                                model_info = {
+                                    'size': 0,  # OllamaDB doesn't provide size, but has other useful info
+                                    'pulls': model.get('pulls', 0),
+                                    'tags': model.get('tags', 0),
+                                    'model_type': model.get('model_type', ''),
+                                    'last_updated': model.get('last_updated_str', ''),
+                                    'description': model.get('description', ''),
+                                    'source': name
+                                }
+                                all_models[model_name] = model_info
+                                models_found += 1
+                    
+                    # Handle Primary Ollama API format
+                    elif isinstance(data, dict) and 'models' in data:
+                        model_list = data['models']
+                        for model in model_list:
+                            if isinstance(model, dict) and 'name' in model:
+                                model_name = model['name']
+                                model_info = {
+                                    'size': model.get('size', 0),
+                                    'modified_at': model.get('modified_at', ''),
+                                    'digest': model.get('digest', ''),
+                                    'parameter_size': model.get('details', {}).get('parameter_size', ''),
+                                    'source': name
+                                }
+                                # Don't override OllamaDB data if we already have it
+                                if model_name not in all_models:
+                                    all_models[model_name] = model_info
+                                    models_found += 1
+                                else:
+                                    # Merge size info from Ollama API into existing OllamaDB data
+                                    if model_info['size'] > 0:
+                                        all_models[model_name]['size'] = model_info['size']
+                                        all_models[model_name]['modified_at'] = model_info['modified_at']
+                    
+                    # Handle Ollama Registry format  
+                    elif isinstance(data, dict) and 'repositories' in data:
+                        repositories = data['repositories']
+                        for repo_name in repositories:
+                            if isinstance(repo_name, str):
+                                model_info = {
+                                    'size': 0,  # Registry doesn't provide size
+                                    'source': name
+                                }
+                                if repo_name not in all_models:  # Don't override API data
+                                    all_models[repo_name] = model_info
+                                    models_found += 1
+                    
+                    # Handle direct list format (if any API returns this)
+                    elif isinstance(data, list):
+                        for item in data:
+                            if isinstance(item, str):
+                                model_name = item
+                                model_info = {
+                                    'size': 0,
+                                    'source': name
+                                }
+                                if model_name not in all_models:
+                                    all_models[model_name] = model_info
+                                    models_found += 1
+                    
+                    if models_found > 0:
+                        self.show_status_message(f"{name} success: Found {models_found} models")
+                        
+            except Exception as e:
+                self.show_status_message(f"{name} failed: {str(e)}")
+        
+        if all_models:
+            model_names = sorted(list(all_models.keys()))
+            self.show_status_message(f"API total: {len(model_names)} models available")
+            
+            # Store model info for later use (without detailed scraping)
+            self.model_info_cache = all_models
+            return model_names
+        
+        # No fallback - return empty list if APIs fail
+        self.show_status_message("No models found from APIs. Only locally installed models will be available.")
+        self.model_info_cache = {}
+        return []
+
+    def format_model_size(self, size_bytes):
+        """Convert bytes to human readable format."""
+        if not size_bytes or size_bytes == 0:
+            return "Unknown"
+        
+        # Convert bytes to GB
+        size_gb = size_bytes / (1024 ** 3)
+        
+        if size_gb < 1:
+            size_mb = size_bytes / (1024 ** 2)
+            return f"{size_mb:.1f} MB"
+        elif size_gb < 10:
+            return f"{size_gb:.1f} GB"
+        else:
+            return f"{size_gb:.0f} GB"
+
+    def get_model_display_info(self, model_name):
+        """Get display info for a model including additional metadata from APIs."""
+        if hasattr(self, 'model_info_cache') and model_name in self.model_info_cache:
+            info = self.model_info_cache[model_name]
+            
+            # Check if we have size data from Ollama API
+            if info.get('size', 0) > 0:
+                size_str = self.format_model_size(info.get('size', 0))
+                return f"{model_name} ({size_str})"
+            
+            # Check if we have pull count from OllamaDB
+            elif info.get('pulls', 0) > 0:
+                pulls = info.get('pulls', 0)
+                if pulls >= 1000000:
+                    pulls_str = f"{pulls/1000000:.1f}M pulls"
+                elif pulls >= 1000:
+                    pulls_str = f"{pulls/1000:.0f}K pulls"
+                else:
+                    pulls_str = f"{pulls} pulls"
+                
+                model_type = info.get('model_type', '')
+                if model_type == 'official':
+                    return f"{model_name} ({pulls_str}) ✓"
+                else:
+                    return f"{model_name} ({pulls_str})"
+            
+            # Just return model name if no additional info available
+            else:
+                return model_name
+        return model_name
+
     def show_download_dialog(self):
         """Show dialog for downloading a new model."""
         if self.is_downloading:
@@ -619,7 +825,7 @@ Once installed, click 'Refresh' in the main application to detect models.
         # Create download dialog
         dialog = tk.Toplevel(self.root)
         dialog.title("Download Model")
-        dialog.geometry("400x200")
+        dialog.geometry("700x650")
         dialog.resizable(False, False)
         
         # Make dialog modal
@@ -628,9 +834,9 @@ Once installed, click 'Refresh' in the main application to detect models.
         
         # Center the dialog
         dialog.update_idletasks()
-        x = (dialog.winfo_screenwidth() // 2) - (400 // 2)
-        y = (dialog.winfo_screenheight() // 2) - (200 // 2)
-        dialog.geometry(f"400x200+{x}+{y}")
+        x = (dialog.winfo_screenwidth() // 2) - (700 // 2)
+        y = (dialog.winfo_screenheight() // 2) - (650 // 2)
+        dialog.geometry(f"700x650+{x}+{y}")
         
         # Main frame
         main_frame = ttk.Frame(dialog, padding="20")
@@ -639,109 +845,987 @@ Once installed, click 'Refresh' in the main application to detect models.
         # Title
         title_label = ttk.Label(main_frame, text="Download Ollama Model", 
                                font=("Arial", 14, "bold"))
-        title_label.pack(pady=(0, 20))
+        title_label.pack(pady=(0, 15))
         
-        # Model name input
-        ttk.Label(main_frame, text="Model name:").pack(anchor='w')
-        model_entry = ttk.Entry(main_frame, width=40, font=("Arial", 11))
+        # Available models dropdown
+        ttk.Label(main_frame, text="Select from available models:").pack(anchor='w')
+        
+        # Status label for loading
+        status_label = ttk.Label(main_frame, text="Loading available models...", 
+                                foreground="#1976D2", font=("Arial", 9))
+        status_label.pack(anchor='w', pady=(2, 5))
+        
+        model_var = tk.StringVar()
+        model_dropdown = ttk.Combobox(main_frame, textvariable=model_var, width=50, state="readonly")
+        model_dropdown.pack(fill=tk.X, pady=(0, 10))
+        
+        # Model size selection
+        size_label = ttk.Label(main_frame, text="Choose model size:")
+        size_label.pack(anchor='w', pady=(10, 0))
+        
+        # Status label for size loading
+        size_status_label = ttk.Label(main_frame, text="Select a model first", 
+                                     foreground="#666666", font=("Arial", 9))
+        size_status_label.pack(anchor='w', pady=(2, 5))
+        
+        size_var = tk.StringVar()
+        size_dropdown = ttk.Combobox(main_frame, textvariable=size_var, width=50, state="readonly")
+        size_dropdown.pack(fill=tk.X, pady=(0, 5))
+        size_dropdown.config(state='disabled')  # Initially disabled
+        
+        # Model already downloaded warning (initially hidden)
+        already_downloaded_label = ttk.Label(main_frame, text="", 
+                                           foreground="red", font=("Arial", 9, "bold"))
+        already_downloaded_label.pack(anchor='w', pady=(0, 10))
+        
+        # Model information display (always visible)
+        info_frame = ttk.Frame(main_frame)
+        info_frame.pack(fill=tk.X, pady=(20, 0))
+        
+        model_info_label = ttk.Label(info_frame, text="Model Information:", 
+                                    font=("Arial", 10, "bold"))
+        model_info_label.pack(anchor='w')
+        
+        # Model details text
+        model_details_text = tk.Text(info_frame, wrap=tk.WORD, height=6, 
+                                   font=('Arial', 9), bg="#F8F9FA", 
+                                   relief=tk.FLAT, padx=10, pady=5)
+        model_details_text.pack(fill=tk.X, pady=(5, 10))
+        
+        # Initially show placeholder text
+        model_details_text.insert('1.0', "Select a model and size to see detailed information here.\n\nThis area will show:\n• Model capabilities\n• Download statistics\n• System requirements\n• Performance information")
+        model_details_text.config(state='disabled')
+        
+        # System compatibility frame
+        compat_frame = ttk.Frame(info_frame)
+        compat_frame.pack(fill=tk.X)
+        
+        compat_label = ttk.Label(compat_frame, text="System Compatibility:", 
+                                font=("Arial", 10, "bold"))
+        compat_label.pack(anchor='w', pady=(0, 5))
+        
+        # GPU only compatibility
+        gpu_only_frame = ttk.Frame(compat_frame)
+        gpu_only_frame.pack(fill=tk.X, pady=1)
+        gpu_only_label = ttk.Label(gpu_only_frame, text="⚪ GPU only - Select model to check compatibility", font=('Arial', 9), foreground="#666666")
+        gpu_only_label.pack(anchor='w')
+        
+        # CPU only compatibility  
+        cpu_only_frame = ttk.Frame(compat_frame)
+        cpu_only_frame.pack(fill=tk.X, pady=1)
+        cpu_only_label = ttk.Label(cpu_only_frame, text="⚪ CPU only - Select model to check compatibility", font=('Arial', 9), foreground="#666666")
+        cpu_only_label.pack(anchor='w')
+        
+        # GPU + CPU compatibility
+        hybrid_frame = ttk.Frame(compat_frame)
+        hybrid_frame.pack(fill=tk.X, pady=1)
+        hybrid_label = ttk.Label(hybrid_frame, text="⚪ GPU + CPU - Select model to check compatibility", font=('Arial', 9), foreground="#666666")
+        hybrid_label.pack(anchor='w')
+        
+        # Hide info frame initially
+        # info_frame.pack_forget()  # Comment out - we want to always show it now
+        
+        # Initialize download tracking variables
+        download_process = None
+        downloading_model = None
+        is_downloading = False
+        
+        # Load available models in background
+        def load_models():
+            try:
+                available_models = self.get_available_models()
+                self.show_status_message(f"load_models: Received {len(available_models) if available_models else 0} models")
+                dialog.after(0, lambda: update_dropdown(available_models))
+            except Exception as e:
+                self.show_status_message(f"load_models error: {str(e)}")
+                dialog.after(0, lambda: update_dropdown([]))
+        
+        def update_dropdown(models):
+            try:
+                self.show_status_message(f"update_dropdown: Processing {len(models) if models else 0} models")
+                if models and len(models) > 0:
+                    # Create display list with sizes
+                    display_models = []
+                    for model_name in models:
+                        display_info = self.get_model_display_info(model_name)
+                        display_models.append(display_info)
+                    
+                    model_dropdown['values'] = display_models
+                    model_dropdown.set('')  # Clear selection
+                    status_label.config(text=f"Found {len(models)} available models", foreground="#1976D2")
+                    self.show_status_message(f"Dropdown updated successfully with {len(models)} models")
+                else:
+                    status_label.config(text="Could not load models. Use manual entry below.", foreground="orange")
+                    self.show_status_message("No models received, showing manual entry message")
+            except Exception as e:
+                self.show_status_message(f"update_dropdown error: {str(e)}")
+                status_label.config(text="Error loading models. Use manual entry below.", foreground="red")
+        
+        # Start loading models
+        threading.Thread(target=load_models, daemon=True).start()
+        
+        def check_gpu_availability():
+            """Check if dedicated GPU is available."""
+            try:
+                # Try nvidia-smi for NVIDIA GPUs
+                result = subprocess.run(['nvidia-smi', '--list-gpus'], 
+                                      capture_output=True, text=True, timeout=3)
+                if result.returncode == 0 and result.stdout.strip():
+                    return True, "NVIDIA GPU detected"
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                pass
+            
+            try:
+                # Try lspci for any GPU
+                result = subprocess.run(['lspci'], capture_output=True, text=True, timeout=3)
+                if result.returncode == 0:
+                    gpu_lines = [line for line in result.stdout.lower().split('\n') 
+                               if any(gpu in line for gpu in ['vga', 'nvidia', 'amd', 'radeon', 'intel graphics'])]
+                    if gpu_lines:
+                        # Check if it's integrated only
+                        integrated_only = all(any(integrated in line for integrated in ['intel', 'integrated']) 
+                                            for line in gpu_lines)
+                        if not integrated_only:
+                            return True, "Dedicated GPU detected"
+                        else:
+                            return False, "Only integrated graphics"
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                pass
+            
+            return False, "No dedicated GPU detected"
+        
+        def check_model_already_downloaded(model_name, size_tag):
+            """Check if the specific model with size is already downloaded."""
+            try:
+                if not self.ollama_path:
+                    return False
+                
+                # Get list of installed models
+                result = subprocess.run([self.ollama_path, "list"], 
+                                      capture_output=True, text=True, timeout=5)
+                if result.returncode != 0:
+                    return False
+                
+                # Construct the full model name with size tag
+                if size_tag and size_tag != "latest (default)":
+                    if size_tag == "latest":
+                        full_model_name = f"{model_name}:latest"
+                    else:
+                        clean_size = size_tag.split(' (')[0]
+                        full_model_name = f"{model_name}:{clean_size}"
+                else:
+                    full_model_name = model_name
+                
+                # Check if this exact model is in the list
+                output_lines = result.stdout.strip().split('\n')
+                for line in output_lines[1:]:  # Skip header
+                    if line.strip():
+                        parts = line.split()
+                        if parts:
+                            installed_model = parts[0]
+                            # Check exact match or default tag match
+                            if (installed_model == full_model_name or 
+                                (installed_model == f"{model_name}:latest" and full_model_name == model_name) or
+                                (installed_model == model_name and full_model_name == f"{model_name}:latest")):
+                                return True
+                
+                return False
+            except Exception as e:
+                self.show_status_message(f"Error checking downloaded models: {str(e)}")
+                return False
+        
+        # Clean compatibility system implementation
+        class ModelCompatibilityChecker:
+            """Clean implementation of model compatibility assessment."""
+            
+            MODEL_REQUIREMENTS = {
+                'micro': {'patterns': [r'(?<!\d)1b(?!\d)', r'(?<!\d)2b(?!\d)'], 'vram_gb': 2, 'ram_gb': 2},
+                'tiny': {'patterns': [r'(?<!\d)3b(?!\d)', r'(?<!\d)4b(?!\d)'], 'vram_gb': 4, 'ram_gb': 3},
+                'small': {'patterns': [r'(?<!\d)7b(?!\d)', r'(?<!\d)8b(?!\d)', r'(?<!\d)9b(?!\d)'], 'vram_gb': 8, 'ram_gb': 6},
+                'medium': {'patterns': [r'(?<!\d)13b(?!\d)', r'(?<!\d)14b(?!\d)', r'(?<!\d)15b(?!\d)'], 'vram_gb': 16, 'ram_gb': 14},
+                'large': {'patterns': [r'(?<!\d)30b(?!\d)', r'(?<!\d)32b(?!\d)', r'(?<!\d)34b(?!\d)'], 'vram_gb': 40, 'ram_gb': 35},
+                'very_large': {'patterns': [r'(?<!\d)70b(?!\d)', r'(?<!\d)72b(?!\d)'], 'vram_gb': 80, 'ram_gb': 70},
+                'huge': {'patterns': [r'(?<!\d)180b(?!\d)', r'(?<!\d)175b(?!\d)'], 'vram_gb': 350, 'ram_gb': 200},
+                'massive': {'patterns': [r'(?<!\d)405b(?!\d)', r'(?<!\d)670b(?!\d)', r'(?<!\d)671b(?!\d)'], 'vram_gb': 1000, 'ram_gb': 800}
+            }
+            
+            def __init__(self):
+                self.system_info = self._get_system_info()
+            
+            def _get_system_info(self):
+                """Get actual system memory information."""
+                info = {'gpu_vram_gb': 0, 'system_ram_gb': 12, 'total_ram_gb': 16, 'has_gpu': False}
+                
+                # Get GPU VRAM
+                try:
+                    result = subprocess.run(['nvidia-smi', '--query-gpu=memory.total', '--format=csv,noheader,nounits'], 
+                                          capture_output=True, text=True, timeout=3)
+                    if result.returncode == 0 and result.stdout.strip():
+                        vram_mb = int(result.stdout.strip().split('\n')[0])
+                        info['gpu_vram_gb'] = vram_mb / 1024
+                        info['has_gpu'] = True
+                except:
+                    pass
+                
+                # Get system RAM
+                try:
+                    with open('/proc/meminfo', 'r') as f:
+                        for line in f:
+                            if line.startswith('MemTotal:'):
+                                ram_kb = int(line.split()[1])
+                                total_ram_gb = ram_kb / (1024 * 1024)
+                                overhead = 2 if total_ram_gb <= 8 else (3 if total_ram_gb <= 16 else max(4, total_ram_gb * 0.12))
+                                info['total_ram_gb'] = total_ram_gb
+                                info['system_ram_gb'] = max(1, total_ram_gb - overhead)
+                                break
+                except:
+                    pass
+                
+                return info
+            
+            def _detect_model_size(self, model_name, size_tag):
+                """Detect model size from name and tag."""
+                import re
+                text_to_analyze = f"{model_name} {size_tag}".lower()
+                text_to_analyze = re.sub(r'\b(latest|default|instruct|chat|code)\b', '', text_to_analyze)
+                
+                # First try to extract decimal numbers with 'b' (e.g., "1.8b", "2.7b")
+                decimal_size_match = re.search(r'(\d+\.\d+)\s*b\b', text_to_analyze)
+                if decimal_size_match:
+                    size_num = float(decimal_size_match.group(1))
+                    if size_num <= 2: return 'micro'
+                    elif size_num <= 4: return 'tiny'
+                    elif size_num <= 9: return 'small'
+                    elif size_num <= 15: return 'medium'
+                    elif size_num <= 35: return 'large'
+                    elif size_num <= 75: return 'very_large'
+                    elif size_num <= 200: return 'huge'
+                    else: return 'massive'
+                
+                # Check for M (million) parameter models like "270m", "500M"
+                million_size_match = re.search(r'(\d+)\s*m\b', text_to_analyze)
+                if million_size_match:
+                    size_num = float(million_size_match.group(1))
+                    # Convert millions to billions for comparison
+                    size_in_billions = size_num / 1000
+                    if size_in_billions <= 2: return 'micro'
+                    elif size_in_billions <= 4: return 'tiny'
+                    else: return 'small'
+                
+                # Then try whole number patterns (but be more specific)
+                for category, config in self.MODEL_REQUIREMENTS.items():
+                    for pattern in config['patterns']:
+                        # Use more specific regex to avoid false matches
+                        if re.search(r'(?<!\d)' + pattern + r'(?!\d)', text_to_analyze):
+                            return category
+                
+                # Final fallback: any number followed by 'b'
+                size_match = re.search(r'(\d+)\s*b\b', text_to_analyze)
+                if size_match:
+                    size_num = float(size_match.group(1))
+                    if size_num <= 2: return 'micro'
+                    elif size_num <= 4: return 'tiny'
+                    elif size_num <= 9: return 'small'
+                    elif size_num <= 15: return 'medium'
+                    elif size_num <= 35: return 'large'
+                    elif size_num <= 75: return 'very_large'
+                    elif size_num <= 200: return 'huge'
+                    else: return 'massive'
+                
+                return 'small'  # Default
+            
+            def get_model_requirements(self, model_name, size_tag):
+                """Get memory requirements for a specific model."""
+                category = self._detect_model_size(model_name, size_tag)
+                config = self.MODEL_REQUIREMENTS[category]
+                return {'category': category, 'vram_gb': config['vram_gb'], 'ram_gb': config['ram_gb']}
+            
+            def assess_gpu_only(self, model_name, size_tag):
+                """Assess GPU-only compatibility."""
+                requirements = self.get_model_requirements(model_name, size_tag)
+                
+                if not self.system_info['has_gpu']:
+                    return ('red', f"❌ GPU only - {requirements['vram_gb']}GB VRAM needed, no dedicated GPU available")
+                
+                if requirements['category'] in ['massive', 'huge']:
+                    return ('red', f"❌ GPU only - {requirements['vram_gb']}GB VRAM needed, requires data center hardware")
+                
+                available_vram = self.system_info['gpu_vram_gb']
+                needed_vram = requirements['vram_gb']
+                
+                if available_vram >= needed_vram:
+                    return ('green', f"✅ GPU only - {needed_vram}GB VRAM needed, {available_vram:.1f}GB available")
+                elif available_vram >= needed_vram * 0.8:
+                    return ('orange', f"⚠️ GPU only - {needed_vram}GB VRAM needed, {available_vram:.1f}GB available (tight fit)")
+                else:
+                    return ('red', f"❌ GPU only - {needed_vram}GB VRAM needed, only {available_vram:.1f}GB available")
+            
+            def assess_cpu_only(self, model_name, size_tag):
+                """Assess CPU-only compatibility."""
+                requirements = self.get_model_requirements(model_name, size_tag)
+                
+                # Add overhead for large models
+                overhead = 1.15 if requirements['category'] in ['large', 'very_large', 'huge', 'massive'] else 1.0
+                effective_ram_needed = requirements['ram_gb'] * overhead
+                available_ram = self.system_info['system_ram_gb']
+                
+                if requirements['category'] in ['massive', 'huge']:
+                    if available_ram >= effective_ram_needed:
+                        return ('orange', f"⚠️ CPU only - {requirements['ram_gb']}GB RAM needed, {available_ram:.1f}GB available (very slow, enterprise hardware)")
+                    else:
+                        return ('red', f"❌ CPU only - {requirements['ram_gb']}GB RAM needed, {available_ram:.1f}GB available (insufficient)")
+                elif requirements['category'] == 'very_large':
+                    if available_ram >= effective_ram_needed:
+                        return ('green', f"✅ CPU only - {requirements['ram_gb']}GB RAM needed, {available_ram:.1f}GB available (slow but possible)")
+                    elif available_ram >= requirements['ram_gb'] * 0.8:
+                        return ('orange', f"⚠️ CPU only - {requirements['ram_gb']}GB RAM needed, {available_ram:.1f}GB available (tight fit, very slow)")
+                    else:
+                        return ('red', f"❌ CPU only - {requirements['ram_gb']}GB RAM needed, {available_ram:.1f}GB available (insufficient)")
+                else:
+                    if available_ram >= effective_ram_needed:
+                        return ('green', f"✅ CPU only - {requirements['ram_gb']}GB RAM needed, {available_ram:.1f}GB available")
+                    elif available_ram >= requirements['ram_gb'] * 0.8:
+                        return ('orange', f"⚠️ CPU only - {requirements['ram_gb']}GB RAM needed, {available_ram:.1f}GB available (tight fit)")
+                    else:
+                        return ('red', f"❌ CPU only - {requirements['ram_gb']}GB RAM needed, {available_ram:.1f}GB available (insufficient)")
+            
+            def assess_hybrid(self, model_name, size_tag):
+                """Assess GPU + CPU hybrid compatibility."""
+                requirements = self.get_model_requirements(model_name, size_tag)
+                
+                if not self.system_info['has_gpu']:
+                    cpu_color, cpu_msg = self.assess_cpu_only(model_name, size_tag)
+                    if 'available' in cpu_msg and '✅' in cpu_msg:
+                        return ('orange', f"⚠️ GPU + CPU - No dedicated GPU, CPU only with {self.system_info['system_ram_gb']:.1f}GB RAM")
+                    else:
+                        return ('red', f"❌ GPU + CPU - No GPU, insufficient RAM: {self.system_info['system_ram_gb']:.1f}GB < {requirements['ram_gb']}GB needed")
+                
+                # With GPU - assess best strategy
+                gpu_color, gpu_msg = self.assess_gpu_only(model_name, size_tag)
+                cpu_color, cpu_msg = self.assess_cpu_only(model_name, size_tag)
+                
+                if '✅' in gpu_msg:
+                    return ('green', f"✅ GPU + CPU - Can run primarily on GPU with {self.system_info['gpu_vram_gb']:.1f}GB VRAM")
+                elif cpu_color in ['green', 'orange'] and self.system_info['gpu_vram_gb'] >= requirements['vram_gb'] * 0.3:
+                    return ('green', f"✅ GPU + CPU - CPU primary with GPU acceleration ({self.system_info['gpu_vram_gb']:.1f}GB VRAM)")
+                elif cpu_color in ['green', 'orange']:
+                    return ('orange', f"⚠️ GPU + CPU - GPU too small ({self.system_info['gpu_vram_gb']:.1f}GB < {requirements['vram_gb']}GB needed), CPU only")
+                else:
+                    return ('red', f"❌ GPU + CPU - Insufficient resources: {self.system_info['gpu_vram_gb']:.1f}GB VRAM, {self.system_info['system_ram_gb']:.1f}GB RAM")
+        
+        # Initialize compatibility checker
+        compat_checker = ModelCompatibilityChecker()
+        
+        def check_gpu_availability():
+            """Check if GPU is available."""
+            return compat_checker.system_info['has_gpu'], compat_checker.system_info
+        
+        def update_system_compatibility(has_gpu, gpu_info, model_name=None, selected_size=None):
+            """Update system compatibility display with clean logic."""
+            if model_name and selected_size:
+                # Get compatibility assessments
+                gpu_color, gpu_msg = compat_checker.assess_gpu_only(model_name, selected_size)
+                cpu_color, cpu_msg = compat_checker.assess_cpu_only(model_name, selected_size)
+                hybrid_color, hybrid_msg = compat_checker.assess_hybrid(model_name, selected_size)
+                
+                # Update labels
+                gpu_only_label.config(text=gpu_msg, foreground=gpu_color)
+                cpu_only_label.config(text=cpu_msg, foreground=cpu_color)
+                hybrid_label.config(text=hybrid_msg, foreground=hybrid_color)
+            else:
+                # Generic compatibility when no model selected
+                if has_gpu:
+                    gpu_only_label.config(text="✅ GPU only - Recommended for best performance", foreground="green")
+                    cpu_only_label.config(text="✅ CPU only - Slower but functional", foreground="green")
+                    hybrid_label.config(text="✅ GPU + CPU - Optimal performance and reliability", foreground="green")
+                else:
+                    gpu_only_label.config(text="❌ GPU only - No dedicated GPU available", foreground="red")
+                    cpu_only_label.config(text="✅ CPU only - Available (may be slow for large models)", foreground="orange")
+                    hybrid_label.config(text="❌ GPU + CPU - Requires dedicated GPU", foreground="red")
+        
+        # Manual model name input
+        ttk.Label(main_frame, text="Or enter model name manually:").pack(anchor='w', pady=(20, 0))
+        model_entry = ttk.Entry(main_frame, width=50, font=("Arial", 11))
         model_entry.pack(fill=tk.X, pady=(5, 10))
-        model_entry.focus()
         
         # Examples
         examples_label = ttk.Label(main_frame, 
-                                  text="Examples: llama3, mistral, codellama, phi3, gemma",
+                                  text="Enter any model name from ollama.com/search",
                                   font=("Arial", 9), foreground="#666666")
         examples_label.pack(pady=(0, 20))
         
-        # Button frame
+        # Button frame (moved to bottom with padding)
         button_frame = ttk.Frame(main_frame)
-        button_frame.pack(fill=tk.X)
+        button_frame.pack(fill=tk.X, side=tk.BOTTOM, pady=(20, 0))
         
-        def start_download():
-            model_name = model_entry.get().strip()
-            if not model_name:
-                messagebox.showwarning("Invalid Input", "Please enter a model name.")
+        def load_model_sizes(selected_model):
+            """Load available sizes for the selected model."""
+            if not selected_model:
                 return
             
-            dialog.destroy()
-            self.download_model(model_name)
+            # Enable size dropdown and show loading
+            size_dropdown.config(state='normal')
+            size_status_label.config(text="Loading sizes...", foreground="#1976D2")
+            size_var.set('')
+            download_btn.config(state='disabled')  # Disable download until size is selected
+            
+            def fetch_sizes():
+                try:
+                    details = self.get_model_details_from_page(selected_model)
+                    dialog.after(0, lambda: update_size_dropdown(details))
+                except Exception as e:
+                    dialog.after(0, lambda: update_size_dropdown(None))
+            
+            threading.Thread(target=fetch_sizes, daemon=True).start()
+        
+        def update_size_dropdown(details):
+            """Update the size dropdown with available sizes."""
+            try:
+                if details and details.get('sizes'):
+                    sizes = details['sizes']
+                    # Create display options with size info
+                    size_options = []
+                    for size in sizes:
+                        size_options.append(f"{size}")
+                    
+                    size_dropdown['values'] = size_options
+                    size_dropdown.config(state='readonly')
+                    size_status_label.config(text=f"Found {len(sizes)} size options", foreground="#1976D2")
+                else:
+                    # No specific sizes found, offer generic options
+                    size_dropdown['values'] = ['latest (default)', 'latest']
+                    size_dropdown.config(state='readonly') 
+                    size_status_label.config(text="Using default size options", foreground="orange")
+            except Exception as e:
+                size_dropdown['values'] = ['latest (default)']
+                size_dropdown.config(state='readonly')
+                size_status_label.config(text="Error loading sizes, using default", foreground="red")
+        
+        def on_model_select(event):
+            """Handle model selection."""
+            selected_display = model_var.get().strip()
+            if selected_display:
+                # Extract actual model name from display format
+                model_name = selected_display.split(' (')[0]  # Get part before " ("
+                load_model_sizes(model_name)
+                # Clear manual entry when dropdown is used
+                model_entry.delete(0, tk.END)
+                # Model information stays visible - no need to hide it
+                # Clear any existing warning
+                already_downloaded_label.config(text="")
+        
+        def on_size_select(event):
+            """Handle size selection."""
+            selected_size = size_var.get().strip()
+            selected_model = model_var.get().strip()
+            if selected_size and selected_model:
+                # Extract model name
+                model_name = selected_model.split(' (')[0]
+                
+                # Update model information (already visible)
+                
+                # Get model details if available
+                if hasattr(self, 'model_info_cache') and model_name in self.model_info_cache:
+                    info = self.model_info_cache[model_name]
+                    
+                    # Build information text
+                    info_text = f"Model: {model_name}\n"
+                    info_text += f"Selected size: {selected_size}\n"
+                    
+                    if info.get('pull_count_display'):
+                        info_text += f"Downloads: {info['pull_count_display']}\n"
+                    
+                    if info.get('last_updated'):
+                        info_text += f"Last updated: {info['last_updated']}\n"
+                    
+                    if info.get('capabilities'):
+                        cap_icons = {'tools': '🔧 Function calling', 'vision': '👁️ Image analysis', 
+                                   'embedding': '📄 Text embeddings', 'thinking': '🧠 Chain of thought'}
+                        caps_display = [cap_icons.get(cap, cap) for cap in info['capabilities']]
+                        info_text += f"Capabilities: {', '.join(caps_display)}\n"
+                    
+                    if info.get('description'):
+                        info_text += f"Description: {info['description']}"
+                        
+                    # Update model details text
+                    model_details_text.config(state='normal')
+                    model_details_text.delete('1.0', tk.END)
+                    model_details_text.insert('1.0', info_text)
+                    model_details_text.config(state='disabled')
+                else:
+                    # Basic information
+                    info_text = f"Model: {model_name}\n"
+                    info_text += f"Selected size: {selected_size}\n"
+                    info_text += "This model will be downloaded from ollama.com\n"
+                    info_text += "Check ollama.com/library for detailed information."
+                    
+                    model_details_text.config(state='normal')
+                    model_details_text.delete('1.0', tk.END)
+                    model_details_text.insert('1.0', info_text)
+                    model_details_text.config(state='disabled')
+                
+                # Check and display system compatibility
+                has_gpu, gpu_info = check_gpu_availability()
+                update_system_compatibility(has_gpu, gpu_info, model_name, selected_size)
+                
+                # Check if model is already downloaded
+                is_already_downloaded = check_model_already_downloaded(model_name, selected_size)
+                if is_already_downloaded:
+                    already_downloaded_label.config(text="⚠️ Model already downloaded")
+                    download_btn.config(state='disabled')  # Disable download button
+                else:
+                    already_downloaded_label.config(text="")  # Clear warning
+                    download_btn.config(state='normal')  # Enable download button
+        
+        def start_download():
+            # Get model name from dropdown or manual entry
+            selected_display = model_var.get().strip()
+            manual_entry = model_entry.get().strip()
+            selected_size = size_var.get().strip()
+            
+            # Extract actual model name from display format "model_name (size) - description"
+            model_name = ""
+            if selected_display:
+                # Extract model name from display format
+                model_name = selected_display.split(' (')[0]  # Get part before " ("
+            elif manual_entry:
+                model_name = manual_entry
+            
+            if not model_name:
+                messagebox.showwarning("Invalid Input", "Please select a model or enter a model name.")
+                return
+            
+            if not selected_size and selected_display:  # Only require size if using dropdown
+                messagebox.showwarning("Invalid Input", "Please select a model size.")
+                return
+            
+            # Construct full model name with size tag
+            if selected_size and selected_size != "latest (default)":
+                if selected_size == "latest":
+                    full_model_name = f"{model_name}:latest"
+                else:
+                    # Remove any extra text like " (default)" and use just the size
+                    clean_size = selected_size.split(' (')[0]
+                    full_model_name = f"{model_name}:{clean_size}"
+            else:
+                full_model_name = model_name  # Use default tag
+            
+            # Start download with progress tracking
+            start_download_with_progress(full_model_name)
+        
+        def start_download_with_progress(full_model_name):
+            """Start download and show progress in dialog."""
+            nonlocal download_process, downloading_model, is_downloading
+            
+            if is_downloading:
+                return  # Prevent multiple downloads
+            
+            is_downloading = True
+            self.is_downloading = True  # Also set in main class
+            downloading_model = full_model_name
+            self.downloading_model = full_model_name  # Also set in main class
+            
+            # Store reference to dialog for main window cancel
+            self._active_download_dialog = dialog
+            
+            # Update main window button to "Cancel Download"
+            if hasattr(self, 'download_button'):
+                self.download_button.config(text="Cancel Download", command=self.start_download_action)
+            
+            # Show progress UI
+            progress_frame.pack(fill=tk.X, pady=(10, 0))
+            progress_text.config(text="Initializing download...")
+            progress_bar['value'] = 0
+            download_status_text.delete('1.0', tk.END)
+            download_status_text.insert('1.0', f"Starting download of {full_model_name}...\n")
+            
+            # Update buttons
+            download_btn.config(state='disabled')
+            cancel_download_btn.pack(side=tk.RIGHT, padx=(0, 10))
+            cancel_download_btn.config(state='normal', command=lambda: cancel_download())
+            cancel_btn.config(text="Close", state='normal')  # Keep cancel button enabled for closing dialog
+            
+            # Auto-close dialog after 1 second to continue download in background
+            def auto_close_dialog():
+                try:
+                    if is_downloading:  # Only close if still downloading
+                        if hasattr(self, 'download_status_label') and downloading_model:
+                            self.download_status_label.config(text=f"📥 {downloading_model}: Downloading in background...")
+                        if hasattr(self, 'show_status_message'):
+                            self.show_status_message(f"Download started! Dialog closing automatically. Download continues in background.")
+                        dialog.destroy()
+                except Exception as e:
+                    # Fallback - close anyway
+                    try:
+                        dialog.destroy()
+                    except:
+                        pass
+            dialog.after(1000, auto_close_dialog)  # Auto-close after 1 second
+            
+            # Disable model/size selection during download
+            model_dropdown.config(state='disabled')
+            size_dropdown.config(state='disabled')
+            model_entry.config(state='disabled')
+            
+            def run_download():
+                """Run the download process in a separate thread."""
+                nonlocal download_process
+                try:
+                    if not self.ollama_path:
+                        dialog.after(0, lambda: download_error("Ollama not found"))
+                        return
+                    
+                    # Start the download process
+                    cmd = [self.ollama_path, "pull", full_model_name]
+                    download_process = subprocess.Popen(
+                        cmd, 
+                        stdout=subprocess.PIPE, 
+                        stderr=subprocess.STDOUT,
+                        text=True, 
+                        bufsize=1,
+                        universal_newlines=True
+                    )
+                    
+                    # Monitor download progress
+                    for line in iter(download_process.stdout.readline, ''):
+                        if download_process.poll() is not None:
+                            break
+                        
+                        # Parse progress from ollama output
+                        progress_info = parse_download_progress(line.strip())
+                        if progress_info:
+                            # Use main window's after method to handle updates even when dialog is closed
+                            self.root.after(0, lambda p=progress_info: update_progress(p))
+                    
+                    # Wait for process to complete
+                    return_code = download_process.wait()
+                    
+                    if return_code == 0:
+                        self.root.after(0, lambda: download_complete(full_model_name))
+                    else:
+                        self.root.after(0, lambda: download_error(f"Download failed with code {return_code}"))
+                        
+                except Exception as e:
+                    self.root.after(0, lambda: download_error(f"Download error: {str(e)}"))
+            
+            # Start download in background thread
+            threading.Thread(target=run_download, daemon=True).start()
+        
+        def parse_download_progress(line):
+            """Parse download progress from ollama output."""
+            import re
+            
+            # Look for percentage patterns in ollama output
+            # Examples: "pulling manifest... 100%", "downloading 12345/67890 50%"
+            percent_match = re.search(r'(\d+)%', line)
+            if percent_match:
+                percentage = int(percent_match.group(1))
+                
+                # Extract status text
+                status = line.strip()
+                if 'pulling' in line.lower():
+                    status = "Pulling manifest..."
+                elif 'downloading' in line.lower():
+                    status = "Downloading model data..."
+                elif 'verifying' in line.lower():
+                    status = "Verifying download..."
+                elif 'success' in line.lower() or 'complete' in line.lower():
+                    status = "Download complete!"
+                
+                return {'percentage': percentage, 'status': status, 'raw': line}
+            
+            # Look for size information
+            size_match = re.search(r'(\d+(?:\.\d+)?)\s*([KMGT]?B)', line)
+            if size_match:
+                return {'status': line.strip(), 'raw': line}
+            
+            return None
+        
+        def update_progress(progress_info):
+            """Update progress display in dialog."""
+            nonlocal downloading_model
+            
+            # Try to update dialog progress (if dialog still exists)
+            try:
+                if 'percentage' in progress_info:
+                    progress_bar['value'] = progress_info['percentage']
+                    progress_text.config(text=f"{progress_info['status']} {progress_info['percentage']}%")
+                else:
+                    progress_text.config(text=progress_info['status'])
+                
+                # Add to status log (dialog only)
+                download_status_text.insert(tk.END, f"{progress_info['raw']}\n")
+                download_status_text.see(tk.END)
+            except (tk.TclError, AttributeError):
+                # Dialog has been closed, only update main window
+                pass
+            
+            # Always update main window status label (works even when dialog is closed)
+            if hasattr(self, 'download_status_label') and downloading_model:
+                try:
+                    if 'percentage' in progress_info:
+                        self.download_status_label.config(text=f"📥 {downloading_model}: {progress_info['percentage']}%")
+                    else:
+                        self.download_status_label.config(text=f"📥 {downloading_model}: {progress_info['status']}")
+                except (tk.TclError, AttributeError):
+                    pass
+        
+        def cancel_download():
+            """Cancel the ongoing download."""
+            nonlocal download_process, downloading_model, is_downloading
+            if download_process:
+                try:
+                    download_process.terminate()
+                    download_process.wait(timeout=5)
+                except:
+                    try:
+                        download_process.kill()
+                    except:
+                        pass
+                
+                download_process = None
+            
+            # Reset state
+            is_downloading = False
+            self.is_downloading = False  # Also reset main class state
+            downloading_model = None
+            self.downloading_model = None
+            
+            # Update UI
+            progress_text.config(text="Download cancelled")
+            download_status_text.insert(tk.END, "\n--- Download cancelled by user ---\n")
+            cancel_download_btn.config(state='disabled')
+            
+            # Re-enable controls
+            download_btn.config(state='normal' if size_var.get() or model_entry.get().strip() else 'disabled')
+            cancel_btn.config(state='normal')
+            model_dropdown.config(state='readonly')
+            size_dropdown.config(state='readonly')
+            model_entry.config(state='normal')
+            
+            # Update main window
+            if hasattr(self, 'show_status_message'):
+                self.show_status_message(f"{downloading_model or 'Model'} download cancelled")
+            if hasattr(self, 'download_status_label'):
+                self.download_status_label.config(text="")
+            if hasattr(self, 'download_button'):
+                self.download_button.config(text="Download", command=self.start_download_action)
+        
+        def download_complete(model_name):
+            """Handle successful download completion."""
+            nonlocal download_process, downloading_model, is_downloading
+            # Reset download state
+            is_downloading = False
+            self.is_downloading = False  # Also reset main class state
+            downloading_model = None
+            self.downloading_model = None
+            download_process = None
+            
+            # Try to update dialog progress (if dialog still exists)
+            try:
+                progress_bar['value'] = 100
+                progress_text.config(text="Download completed successfully!")
+                download_status_text.insert(tk.END, "\n--- Download completed successfully ---\n")
+                download_status_text.see(tk.END)
+                
+                # Update dialog buttons
+                cancel_download_btn.config(state='disabled')
+                cancel_btn.config(text="Close", state='normal')
+                
+                # Re-enable dialog controls
+                model_dropdown.config(state='readonly')
+                size_dropdown.config(state='readonly')
+                model_entry.config(state='normal')
+                
+                # Auto-close dialog after 3 seconds
+                def auto_close():
+                    try:
+                        dialog.destroy()
+                    except:
+                        pass
+                dialog.after(3000, auto_close)
+            except (tk.TclError, AttributeError):
+                # Dialog has been closed, that's fine
+                pass
+            
+            # Always update main window (works even when dialog is closed)
+            if hasattr(self, 'show_status_message'):
+                self.show_status_message(f"{model_name} download finished")
+            if hasattr(self, 'download_status_label'):
+                self.download_status_label.config(text=f"✅ Downloaded {model_name}")
+            if hasattr(self, 'download_button'):
+                self.download_button.config(text="Download", command=self.start_download_action)
+                
+            # Refresh models in main window
+            if hasattr(self, 'refresh_models'):
+                self.refresh_models()
+        
+        def download_error(error_msg):
+            """Handle download error."""
+            nonlocal download_process, downloading_model, is_downloading
+            # Reset download state
+            is_downloading = False
+            self.is_downloading = False  # Also reset main class state
+            error_model = downloading_model
+            downloading_model = None
+            self.downloading_model = None
+            download_process = None
+            
+            # Try to update dialog (if dialog still exists)
+            try:
+                progress_text.config(text=f"Download failed: {error_msg}")
+                download_status_text.insert(tk.END, f"\n--- Error: {error_msg} ---\n")
+                download_status_text.see(tk.END)
+                
+                # Update dialog buttons
+                cancel_download_btn.config(state='disabled')
+                download_btn.config(state='normal' if size_var.get() or model_entry.get().strip() else 'disabled')
+                cancel_btn.config(state='normal')
+                
+                # Re-enable dialog controls
+                model_dropdown.config(state='readonly')
+                size_dropdown.config(state='readonly')
+                model_entry.config(state='normal')
+            except (tk.TclError, AttributeError):
+                # Dialog has been closed, that's fine
+                pass
+            
+            # Always update main window (works even when dialog is closed)
+            if hasattr(self, 'show_status_message'):
+                self.show_status_message(f"{error_model or 'Model'} download error: {error_msg}")
+            if hasattr(self, 'download_status_label'):
+                self.download_status_label.config(text=f"❌ Download failed")
+            if hasattr(self, 'download_button'):
+                self.download_button.config(text="Download", command=self.start_download_action)
         
         def cancel_dialog():
-            dialog.destroy()
+            """Handle dialog cancellation."""
+            nonlocal is_downloading, downloading_model
+            if is_downloading:
+                # If downloading, just close dialog and continue in background
+                # No confirmation needed - download continues
+                if hasattr(self, 'download_status_label') and downloading_model:
+                    self.download_status_label.config(text=f"📥 {downloading_model}: Downloading in background...")
+                if hasattr(self, 'show_status_message'):
+                    self.show_status_message(f"Download continues in background. Use main window 'Cancel Download' button to stop.")
+                dialog.destroy()
+            else:
+                dialog.destroy()
+        
+        def on_entry_change(event):
+            # When user types in manual entry, clear dropdown selections
+            model_var.set('')
+            size_var.set('')
+            size_dropdown.config(state='disabled')
+            size_status_label.config(text="Select a model first", foreground="#666666")
+            download_btn.config(state='disabled')
+            # Model information stays visible - reset to placeholder text
+            model_details_text.config(state='normal')
+            model_details_text.delete('1.0', tk.END)
+            model_details_text.insert('1.0', "Select a model and size to see detailed information here.\n\nThis area will show:\n• Model capabilities\n• Download statistics\n• System requirements\n• Performance information")
+            model_details_text.config(state='disabled')
+            # Reset compatibility labels
+            gpu_only_label.config(text="⚪ GPU only - Select model to check compatibility", foreground="#666666")
+            cpu_only_label.config(text="⚪ CPU only - Select model to check compatibility", foreground="#666666")
+            hybrid_label.config(text="⚪ GPU + CPU - Select model to check compatibility", foreground="#666666")
+            # Clear any existing warning
+            already_downloaded_label.config(text="")
+        
+        # Bind events
+        model_dropdown.bind('<<ComboboxSelected>>', on_model_select)
+        size_dropdown.bind('<<ComboboxSelected>>', on_size_select)
+        model_entry.bind('<KeyPress>', on_entry_change)
+        
+        # Progress frame (initially hidden)
+        progress_frame = ttk.Frame(main_frame)
+        progress_label = ttk.Label(progress_frame, text="Download Progress:", 
+                                  font=("Arial", 10, "bold"))
+        progress_label.pack(anchor='w', pady=(0, 5))
+        
+        progress_bar = ttk.Progressbar(progress_frame, mode='determinate', length=400)
+        progress_bar.pack(fill=tk.X, pady=(0, 5))
+        
+        progress_text = ttk.Label(progress_frame, text="", font=("Arial", 9))
+        progress_text.pack(anchor='w')
+        
+        # Download status text area
+        download_status_text = tk.Text(progress_frame, wrap=tk.WORD, height=4, 
+                                     font=('Consolas', 9), bg="#F8F9FA", 
+                                     relief=tk.FLAT, padx=10, pady=5)
+        download_status_text.pack(fill=tk.X, pady=(5, 0))
         
         # Buttons
         cancel_btn = ttk.Button(button_frame, text="Cancel", command=cancel_dialog)
         cancel_btn.pack(side=tk.RIGHT)
         
-        download_btn = ttk.Button(button_frame, text="Download", command=start_download)
+        # Cancel download button (initially hidden)
+        cancel_download_btn = ttk.Button(button_frame, text="Cancel Download", 
+                                       command=lambda: None, state='disabled')
+        cancel_download_btn.pack(side=tk.RIGHT, padx=(0, 10))
+        cancel_download_btn.pack_forget()  # Hide initially
+        
+        download_btn = ttk.Button(button_frame, text="Download", command=start_download, state='disabled')
         download_btn.pack(side=tk.RIGHT, padx=(0, 10))
+        
+        # Handle Enter key in manual entry
+        model_entry.bind('<Return>', lambda e: start_download())
+        dialog.bind('<Escape>', lambda e: cancel_dialog())
         
         # Handle Enter key
         model_entry.bind('<Return>', lambda e: start_download())
         dialog.bind('<Escape>', lambda e: cancel_dialog())
 
-    def download_model(self, model_name):
-        """Download a model using ollama pull."""
-        if self.is_downloading or not self.ollama_path:
+    def start_download_action(self):
+        """Handle download button click - either start download or cancel it."""
+        if self.is_downloading:
+            # Currently downloading, so cancel it
+            self.cancel_main_download()
+        else:
+            # Not downloading, show download dialog
+            self.show_download_dialog()
+    
+    def cancel_main_download(self):
+        """Cancel download from main window."""
+        if not self.is_downloading:
             return
             
-        self.is_downloading = True
-        self.downloading_model = model_name
+        # Reset main window state
+        self.is_downloading = False
+        self.downloading_model = None
+        self.download_button.config(text="Download", command=self.start_download_action)
+        if hasattr(self, 'download_status_label'):
+            self.download_status_label.config(text="")
         
-        # Update UI to show downloading state
-        self.download_status_label.config(text=f"📥 Downloading {model_name}...")
-        self.download_button.config(text="Cancel", command=self.cancel_download)
-        self.send_button.config(state='disabled')  # Disable chat during download
-        self.stop_button.config(state='disabled')  # Disable stop during download
-        
-        self.show_status_message(f"Starting download of model '{model_name}'...")
-        
-        def download_thread():
+        # If there's an active download dialog, trigger its cancel function
+        if hasattr(self, '_active_download_dialog'):
             try:
-                # Start the download process
-                self.download_process = subprocess.Popen(
-                    [self.ollama_path, "pull", model_name],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    bufsize=1,
-                    universal_newlines=True
-                )
+                # Find and trigger the cancel download button in the dialog
+                def find_cancel_button(widget):
+                    for child in widget.winfo_children():
+                        if isinstance(child, ttk.Button):
+                            btn_text = child.cget("text").lower()
+                            if "cancel" in btn_text and "download" in btn_text:
+                                child.invoke()
+                                return True
+                        elif hasattr(child, 'winfo_children'):
+                            if find_cancel_button(child):
+                                return True
+                    return False
                 
-                # Monitor download progress
-                while True:
-                    if self.download_process.poll() is not None:
-                        # Process finished
-                        break
-                    
-                    # Read output line by line
-                    output = self.download_process.stdout.readline()
-                    if output:
-                        # Update status with download progress
-                        clean_output = output.strip()
-                        if clean_output:
-                            self.root.after(0, lambda msg=clean_output: 
-                                self.show_status_message(f"Download progress: {msg}"))
-                    
-                    time.sleep(0.1)
+                find_cancel_button(self._active_download_dialog)
                 
-                # Check final result
-                return_code = self.download_process.returncode
-                stdout, stderr = self.download_process.communicate()
-                
-                if return_code == 0:
-                    # Download successful
-                    self.root.after(0, lambda: self.on_download_success(model_name))
-                else:
-                    # Download failed
-                    error_msg = stderr.strip() if stderr else "Unknown error"
-                    self.root.after(0, lambda: self.on_download_error(model_name, error_msg))
-                    
             except Exception as e:
-                self.root.after(0, lambda: self.on_download_error(model_name, str(e)))
-        
-        # Start download in background thread
-        threading.Thread(target=download_thread, daemon=True).start()
+                # If dialog cancel fails, just show message
+                self.show_status_message(f"Download cancelled from main window")
+        else:
+            self.show_status_message("Download cancelled from main window")
+
+    # NOTE: Legacy download method - replaced by dialog-based download with progress tracking
+    # def download_model(self, model_name):
+    #     """Download a model using ollama pull."""
+    #     # This method is replaced by the enhanced dialog-based download system
+    #     # in show_download_dialog() which provides better progress tracking
+    #     pass
 
     def cancel_download(self):
         """Cancel the current model download."""
@@ -794,7 +1878,7 @@ Once installed, click 'Refresh' in the main application to detect models.
         
         # Reset UI elements
         self.download_status_label.config(text="")
-        self.download_button.config(text="Download", command=self.show_download_dialog)
+        self.download_button.config(text="Download", command=self.start_download_action)
         self.send_button.config(state='normal')  # Re-enable chat
         self.stop_button.config(state='disabled')  # Keep stop disabled when not generating
 
@@ -973,27 +2057,21 @@ Once installed, click 'Refresh' in the main application to detect models.
             # Try to get CPU usage
             cpu_usage = None
             try:
-                # Simple CPU usage estimation
-                import psutil
-                cpu_usage = int(psutil.cpu_percent(interval=0.1))
-            except ImportError:
-                # Fallback if psutil not available
-                try:
-                    # Try using top command
-                    top_result = subprocess.run(
-                        ["top", "-bn1"], capture_output=True, text=True, timeout=2
-                    )
-                    if top_result.returncode == 0:
-                        # Parse CPU usage from top output
-                        for line in top_result.stdout.split('\n'):
-                            if 'Cpu(s):' in line or '%Cpu(s):' in line:
-                                import re
-                                cpu_match = re.search(r'(\d+(?:\.\d+)?)%', line)
-                                if cpu_match:
-                                    cpu_usage = int(float(cpu_match.group(1)))
-                                break
-                except (FileNotFoundError, subprocess.TimeoutExpired, ValueError):
-                    pass
+                # Try using top command for CPU usage (fallback approach)
+                top_result = subprocess.run(
+                    ["top", "-bn1"], capture_output=True, text=True, timeout=2
+                )
+                if top_result.returncode == 0:
+                    # Parse CPU usage from top output
+                    for line in top_result.stdout.split('\n'):
+                        if 'Cpu(s):' in line or '%Cpu(s):' in line:
+                            import re
+                            cpu_match = re.search(r'(\d+(?:\.\d+)?)%', line)
+                            if cpu_match:
+                                cpu_usage = int(float(cpu_match.group(1)))
+                            break
+            except (FileNotFoundError, subprocess.TimeoutExpired, ValueError):
+                pass
             
             # Generate realistic values based on system capabilities
             if gpu_usage is None:
@@ -1358,13 +2436,42 @@ Once installed, click 'Refresh' in the main application to detect models.
 
     def refresh_models(self):
         """Refresh the model dropdown with current Ollama models."""
+        # Store the previously selected model
+        previous_model = self.model_var.get()
+        
         models = self.get_ollama_models()
         self.model_dropdown['values'] = models
         
         if models:
-            # Set first model as default
-            self.model_var.set(models[0])
-            self.show_status_message(f"Found {len(models)} model(s). Default: {models[0]}")
+            # If there was a download that just completed, try to select the new model
+            download_status_text = self.download_status_label.cget('text')
+            if download_status_text.startswith('✅ Downloaded '):
+                # Extract model name from download status
+                downloaded_model = download_status_text.replace('✅ Downloaded ', '')
+                # Find matching model in the list
+                matching_model = None
+                for model in models:
+                    if downloaded_model in model or model.startswith(downloaded_model.split(':')[0]):
+                        matching_model = model
+                        break
+                
+                if matching_model:
+                    self.model_var.set(matching_model)
+                    self.selected_model = matching_model
+                    self.update_model_details(matching_model)
+                    self.show_status_message(f"✅ Downloaded and selected: {matching_model}")
+                    # Clear download status after successful selection
+                    self.download_status_label.config(text="")
+                    return
+            
+            # If previous model is still available, keep it selected
+            if previous_model and previous_model in models:
+                self.model_var.set(previous_model)
+                self.show_status_message(f"Found {len(models)} model(s). Current: {previous_model}")
+            else:
+                # Set first model as default
+                self.model_var.set(models[0])
+                self.show_status_message(f"Found {len(models)} model(s). Default: {models[0]}")
         else:
             self.model_var.set("")
             self.show_status_message("No models found. Install models: 'ollama pull llama3'")
@@ -1373,8 +2480,8 @@ Once installed, click 'Refresh' in the main application to detect models.
         if not self.selected_model:
             self.update_model_details(None)
             
-        # Clear download status if not downloading
-        if not self.is_downloading:
+        # Clear download status if not downloading (and not just completed)
+        if not self.is_downloading and not self.download_status_label.cget('text').startswith('✅'):
             self.download_status_label.config(text="")
 
     def update_response_timeout(self):
@@ -1653,10 +2760,6 @@ Once installed, click 'Refresh' in the main application to detect models.
 if __name__ == "__main__":
     import re
     import random
-    try:
-        import psutil
-    except ImportError:
-        psutil = None
 
     root = tk.Tk()
     app = OllamaGUI(root)

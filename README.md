@@ -1,22 +1,25 @@
 # Ollama Tkinter GUI
 
-A **feature-rich and intuitive** Python-based graphical user interface for [Ollama](https://ollama.ai), providing comprehensive AI chat functionality with advanced features like token tracking, response control, and intelligent model management.
+A **powerful and comprehensive** Python-based graphical user interface for [Ollama](https://ollama.ai), providing professional-grade AI chat functionality with advanced features including intelligent model download dialogs, system compatibility checking, real-time token tracking, response control, and sophisticated server management.
 
 <img width="1404" height="964" alt="Screenshot from 2025-08-04 13-01-24" src="https://github.com/user-attachments/assets/b0c847c6-1ebf-4700-bcb1-2c304244bf8a" />
 
 ## 🚀 Overview
 
-This is a comprehensive yet user-friendly GUI wrapper for Ollama that makes it easy to:
-- **Automatically manage** the Ollama server (starts/stops as needed)
-- **Browse and select** installed models with detailed information
-- **Download new models** with progress tracking and cancellation
-- **Chat interactively** with real-time token usage monitoring
-- **Control response generation** with stop functionality and timeout configuration
-- **Filter model reasoning** with <think> tag toggle
-- **Monitor system resources** and model performance
-- **View detailed logs** of all operations with intelligent filtering
+This is a **comprehensive and professional** GUI wrapper for Ollama that provides enterprise-grade features while maintaining ease of use:
 
-Perfect for users who want a powerful desktop interface with advanced AI chat features while maintaining ease of use.
+### 🎯 **Core Capabilities**
+- **Smart Server Management** - Automatic start/stop with user context detection
+- **Advanced Model Downloads** - Professional dialog with system compatibility analysis
+- **Intelligent Chat Interface** - Real-time token tracking with context management
+- **Professional Download System** - Progress tracking, background downloads, auto-cancellation
+- **System Compatibility Analysis** - Real-time GPU/CPU/RAM assessment for model requirements
+- **Response Control** - Stop generation, configurable timeouts, <think> tag filtering
+- **Resource Monitoring** - Live system usage, model performance metrics
+- **Status Management** - Comprehensive logging with intelligent filtering
+
+### 🏆 **What Makes This Special**
+Perfect for users who need **professional-grade AI tools** with advanced features like system compatibility checking, background download management, real-time resource monitoring, and sophisticated conversation management, all wrapped in an intuitive desktop interface.
 
 ## ✨ Features
 
