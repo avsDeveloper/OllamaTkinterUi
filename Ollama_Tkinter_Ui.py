@@ -22,6 +22,11 @@ class OllamaGUI:
         menubar = tk.Menu(root)
         root.config(menu=menubar)
         
+        # Settings menu
+        settings_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Settings", menu=settings_menu)
+        settings_menu.add_command(label="Model Parameters", command=self.show_settings_dialog)
+        
         help_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Help", menu=help_menu)
         help_menu.add_command(label="Installation Guide", command=self.show_install_guide)
@@ -153,30 +158,6 @@ class OllamaGUI:
         self.user_input = tk.Text(input_frame, height=3, font=('Arial', 11), wrap=tk.WORD, state='disabled')
         self.user_input.pack(fill=tk.X, pady=(0, 5))
         self.user_input.bind("<KeyPress>", self.on_input_keypress)
-        
-        # Model Response Timeout Configuration
-        response_timeout_frame = ttk.Frame(left_frame)
-        response_timeout_frame.pack(pady=(10, 10), fill=tk.X)
-
-        response_timeout_label = ttk.Label(response_timeout_frame, text="Model Response Timeout (s):")
-        response_timeout_label.pack(anchor='w')
-
-        self.response_timeout_var = tk.StringVar(value="60")  # Default timeout is 60 seconds
-        response_timeout_entry = ttk.Entry(response_timeout_frame, textvariable=self.response_timeout_var, width=10)
-        response_timeout_entry.pack(side=tk.LEFT, anchor='w', pady=(5, 0))
-
-        update_timeout_button = ttk.Button(response_timeout_frame, text="Set", command=self.update_response_timeout)
-        update_timeout_button.pack(side=tk.LEFT, anchor='w', padx=(5, 0), pady=(5, 0))
-
-        # Show thinking toggle
-        thinking_frame = ttk.Frame(left_frame)
-        thinking_frame.pack(pady=(5, 10), fill=tk.X)
-        
-        self.show_thinking_var = tk.BooleanVar(value=False)  # Default: hide thinking
-        thinking_checkbox = ttk.Checkbutton(thinking_frame, 
-                                          text="Show model reasoning (<think> tags)", 
-                                          variable=self.show_thinking_var)
-        thinking_checkbox.pack(anchor='w')
 
         # Send button (in right panel)
         button_frame = ttk.Frame(right_frame)
@@ -226,6 +207,16 @@ class OllamaGUI:
         self.current_response = ""  # Accumulate streaming response for filtering
         self.current_request = None  # Track current HTTP request for cancellation
         self.is_generating = False  # Track if model is generating response
+        
+        # Model settings variables
+        self.response_timeout_var = tk.StringVar(value="60")  # Default timeout is 60 seconds
+        self.show_thinking_var = tk.BooleanVar(value=False)  # Default: hide thinking
+        self.temperature_var = tk.DoubleVar(value=0.7)  # Default temperature
+        self.top_p_var = tk.DoubleVar(value=0.9)  # Default top_p
+        self.top_k_var = tk.IntVar(value=40)  # Default top_k
+        self.repeat_penalty_var = tk.DoubleVar(value=1.1)  # Default repeat penalty
+        self.max_tokens_var = tk.IntVar(value=0)  # 0 means no limit
+        self.seed_var = tk.IntVar(value=-1)  # -1 means random seed
         
         # Token tracking variables
         self.current_chat_tokens = 0  # Tokens used in current conversation
@@ -2714,19 +2705,6 @@ Once installed, click 'Refresh' in the main application to detect models.
         if not self.is_downloading and not self.download_status_label.cget('text').startswith('✅'):
             self.download_status_label.config(text="")
 
-    def update_response_timeout(self):
-        """Update the response timeout value."""
-        try:
-            timeout_value = int(self.response_timeout_var.get())
-            if timeout_value > 0:
-                self.show_status_message(f"Response timeout set to {timeout_value} seconds.")
-            else:
-                self.response_timeout_var.set("60")
-                messagebox.showwarning("Invalid Timeout", "Timeout must be a positive number.")
-        except ValueError:
-            self.response_timeout_var.set("60")
-            messagebox.showwarning("Invalid Input", "Please enter a valid number for the timeout.")
-
     def run_ollama_query(self, model, prompt):
         """Query Ollama and update GUI with response."""
         if not self.ollama_path:
@@ -2749,8 +2727,32 @@ Once installed, click 'Refresh' in the main application to detect models.
                 payload = {
                     "model": model,
                     "prompt": prompt,
-                    "stream": True
+                    "stream": True,
+                    "options": {}
                 }
+                
+                # Add model parameters to the payload
+                if self.temperature_var.get() != 0.7:  # Only add if not default
+                    payload["options"]["temperature"] = self.temperature_var.get()
+                
+                if self.top_p_var.get() != 0.9:  # Only add if not default
+                    payload["options"]["top_p"] = self.top_p_var.get()
+                
+                if self.top_k_var.get() != 40:  # Only add if not default
+                    payload["options"]["top_k"] = self.top_k_var.get()
+                
+                if self.repeat_penalty_var.get() != 1.1:  # Only add if not default
+                    payload["options"]["repeat_penalty"] = self.repeat_penalty_var.get()
+                
+                if self.max_tokens_var.get() > 0:  # Only add if set
+                    payload["options"]["num_predict"] = self.max_tokens_var.get()
+                
+                if self.seed_var.get() >= 0:  # Only add if not random (-1)
+                    payload["options"]["seed"] = self.seed_var.get()
+                
+                # Remove options key if empty
+                if not payload["options"]:
+                    del payload["options"]
                 
                 # Store the request for potential cancellation
                 self.current_request = requests.post(url, json=payload, stream=True, timeout=timeout)
@@ -3013,6 +3015,266 @@ Once installed, click 'Refresh' in the main application to detect models.
                 'content': content.strip()
             })
             self.update_token_counter()
+    
+    def show_settings_dialog(self):
+        """Show the model parameters settings dialog.
+        
+        This dialog allows users to configure:
+        - Response timeout settings
+        - Model reasoning display options
+        - Model generation parameters (temperature, top_p, top_k, etc.)
+        - Advanced settings (max tokens, seed)
+        
+        The dialog provides Apply, Cancel, and Default buttons:
+        - Apply: Saves changes and logs them to system logs
+        - Cancel: Discards changes and restores original values
+        - Default: Resets all parameters to their default values
+        """
+        if not self.selected_model:
+            messagebox.showwarning("No Model Selected", "Please select a model first to configure its parameters.")
+            return
+        
+        # Create dialog window
+        dialog = tk.Toplevel(self.root)
+        dialog.title(f"Model Parameters - {self.selected_model.split(':')[0]}")
+        dialog.geometry("500x600")
+        dialog.resizable(False, False)
+        dialog.transient(self.root)
+        dialog.grab_set()
+        
+        # Center the dialog
+        dialog.update_idletasks()
+        x = (dialog.winfo_screenwidth() // 2) - (dialog.winfo_width() // 2)
+        y = (dialog.winfo_screenheight() // 2) - (dialog.winfo_height() // 2)
+        dialog.geometry(f"+{x}+{y}")
+        
+        # Main frame with padding
+        main_frame = ttk.Frame(dialog)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
+        # Title
+        title_label = ttk.Label(main_frame, text=f"Parameters for {self.selected_model.split(':')[0]}", 
+                               font=('Arial', 12, 'bold'))
+        title_label.pack(pady=(0, 20))
+        
+        # Store original values for cancel functionality
+        original_values = {
+            'timeout': self.response_timeout_var.get(),
+            'thinking': self.show_thinking_var.get(),
+            'temperature': self.temperature_var.get(),
+            'top_p': self.top_p_var.get(),
+            'top_k': self.top_k_var.get(),
+            'repeat_penalty': self.repeat_penalty_var.get(),
+            'max_tokens': self.max_tokens_var.get(),
+            'seed': self.seed_var.get()
+        }
+        
+        # Create notebook for organized sections
+        notebook = ttk.Notebook(main_frame)
+        notebook.pack(fill=tk.BOTH, expand=True, pady=(0, 20))
+        
+        # General settings tab
+        general_frame = ttk.Frame(notebook)
+        notebook.add(general_frame, text="General")
+        
+        # Response Timeout
+        timeout_frame = ttk.LabelFrame(general_frame, text="Response Settings", padding=10)
+        timeout_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        ttk.Label(timeout_frame, text="Response Timeout (seconds):").pack(anchor='w')
+        timeout_entry = ttk.Entry(timeout_frame, textvariable=self.response_timeout_var, width=10)
+        timeout_entry.pack(anchor='w', pady=(5, 0))
+        ttk.Label(timeout_frame, text="How long to wait for model response", 
+                 font=('Arial', 9), foreground='#666').pack(anchor='w', pady=(2, 0))
+        
+        # Show thinking toggle
+        thinking_frame = ttk.LabelFrame(general_frame, text="Display Options", padding=10)
+        thinking_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        thinking_check = ttk.Checkbutton(thinking_frame, text="Show model reasoning (<think> tags)", 
+                                        variable=self.show_thinking_var)
+        thinking_check.pack(anchor='w')
+        ttk.Label(thinking_frame, text="Display internal model reasoning when available", 
+                 font=('Arial', 9), foreground='#666').pack(anchor='w', pady=(2, 0))
+        
+        # Model parameters tab
+        params_frame = ttk.Frame(notebook)
+        notebook.add(params_frame, text="Model Parameters")
+        
+        # Temperature
+        temp_frame = ttk.LabelFrame(params_frame, text="Temperature", padding=10)
+        temp_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        temp_scale = ttk.Scale(temp_frame, from_=0.1, to=2.0, variable=self.temperature_var, 
+                              orient=tk.HORIZONTAL, length=300)
+        temp_scale.pack(fill=tk.X)
+        temp_value_label = ttk.Label(temp_frame, text="")
+        temp_value_label.pack(anchor='w')
+        ttk.Label(temp_frame, text="Controls randomness: lower = more focused, higher = more creative", 
+                 font=('Arial', 9), foreground='#666').pack(anchor='w')
+        
+        # Top P
+        top_p_frame = ttk.LabelFrame(params_frame, text="Top P (Nucleus Sampling)", padding=10)
+        top_p_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        top_p_scale = ttk.Scale(top_p_frame, from_=0.1, to=1.0, variable=self.top_p_var, 
+                               orient=tk.HORIZONTAL, length=300)
+        top_p_scale.pack(fill=tk.X)
+        top_p_value_label = ttk.Label(top_p_frame, text="")
+        top_p_value_label.pack(anchor='w')
+        ttk.Label(top_p_frame, text="Limits token choices to top probability mass", 
+                 font=('Arial', 9), foreground='#666').pack(anchor='w')
+        
+        # Top K
+        top_k_frame = ttk.LabelFrame(params_frame, text="Top K", padding=10)
+        top_k_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        top_k_scale = ttk.Scale(top_k_frame, from_=1, to=100, variable=self.top_k_var, 
+                               orient=tk.HORIZONTAL, length=300)
+        top_k_scale.pack(fill=tk.X)
+        top_k_value_label = ttk.Label(top_k_frame, text="")
+        top_k_value_label.pack(anchor='w')
+        ttk.Label(top_k_frame, text="Limits choices to top K most likely tokens", 
+                 font=('Arial', 9), foreground='#666').pack(anchor='w')
+        
+        # Repeat Penalty
+        repeat_frame = ttk.LabelFrame(params_frame, text="Repeat Penalty", padding=10)
+        repeat_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        repeat_scale = ttk.Scale(repeat_frame, from_=0.5, to=2.0, variable=self.repeat_penalty_var, 
+                                orient=tk.HORIZONTAL, length=300)
+        repeat_scale.pack(fill=tk.X)
+        repeat_value_label = ttk.Label(repeat_frame, text="")
+        repeat_value_label.pack(anchor='w')
+        ttk.Label(repeat_frame, text="Reduces repetition: higher values = less repetition", 
+                 font=('Arial', 9), foreground='#666').pack(anchor='w')
+        
+        # Advanced tab
+        advanced_frame = ttk.Frame(notebook)
+        notebook.add(advanced_frame, text="Advanced")
+        
+        # Max Tokens
+        max_tokens_frame = ttk.LabelFrame(advanced_frame, text="Max Tokens", padding=10)
+        max_tokens_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        ttk.Label(max_tokens_frame, text="Maximum tokens to generate (0 = no limit):").pack(anchor='w')
+        max_tokens_spinbox = ttk.Spinbox(max_tokens_frame, from_=0, to=4096, 
+                                        textvariable=self.max_tokens_var, width=10)
+        max_tokens_spinbox.pack(anchor='w', pady=(5, 0))
+        ttk.Label(max_tokens_frame, text="Limits the length of model responses", 
+                 font=('Arial', 9), foreground='#666').pack(anchor='w', pady=(2, 0))
+        
+        # Seed
+        seed_frame = ttk.LabelFrame(advanced_frame, text="Seed", padding=10)
+        seed_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        ttk.Label(seed_frame, text="Random seed (-1 = random):").pack(anchor='w')
+        seed_spinbox = ttk.Spinbox(seed_frame, from_=-1, to=999999, 
+                                  textvariable=self.seed_var, width=10)
+        seed_spinbox.pack(anchor='w', pady=(5, 0))
+        ttk.Label(seed_frame, text="Use same seed for reproducible outputs", 
+                 font=('Arial', 9), foreground='#666').pack(anchor='w', pady=(2, 0))
+        
+        # Update value labels
+        def update_value_labels():
+            temp_value_label.config(text=f"Current: {self.temperature_var.get():.2f}")
+            top_p_value_label.config(text=f"Current: {self.top_p_var.get():.2f}")
+            top_k_value_label.config(text=f"Current: {int(self.top_k_var.get())}")
+            repeat_value_label.config(text=f"Current: {self.repeat_penalty_var.get():.2f}")
+        
+        # Bind scale updates
+        temp_scale.configure(command=lambda v: update_value_labels())
+        top_p_scale.configure(command=lambda v: update_value_labels())
+        top_k_scale.configure(command=lambda v: update_value_labels())
+        repeat_scale.configure(command=lambda v: update_value_labels())
+        
+        # Initial value update
+        update_value_labels()
+        
+        # Buttons frame
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(fill=tk.X, pady=(10, 0))
+        
+        def apply_settings():
+            """Apply current settings and close dialog."""
+            try:
+                # Validate timeout
+                timeout_val = int(self.response_timeout_var.get())
+                if timeout_val <= 0:
+                    raise ValueError("Timeout must be positive")
+                
+                # Log settings changes
+                self.show_status_message("✅ Model parameters applied successfully")
+                
+                # Log specific changes
+                changes = []
+                if original_values['temperature'] != self.temperature_var.get():
+                    changes.append(f"Temperature: {original_values['temperature']:.2f} → {self.temperature_var.get():.2f}")
+                if original_values['top_p'] != self.top_p_var.get():
+                    changes.append(f"Top-P: {original_values['top_p']:.2f} → {self.top_p_var.get():.2f}")
+                if original_values['top_k'] != self.top_k_var.get():
+                    changes.append(f"Top-K: {original_values['top_k']} → {self.top_k_var.get()}")
+                if original_values['repeat_penalty'] != self.repeat_penalty_var.get():
+                    changes.append(f"Repeat penalty: {original_values['repeat_penalty']:.2f} → {self.repeat_penalty_var.get():.2f}")
+                if original_values['max_tokens'] != self.max_tokens_var.get():
+                    changes.append(f"Max tokens: {original_values['max_tokens']} → {self.max_tokens_var.get()}")
+                if original_values['seed'] != self.seed_var.get():
+                    changes.append(f"Seed: {original_values['seed']} → {self.seed_var.get()}")
+                if original_values['timeout'] != self.response_timeout_var.get():
+                    changes.append(f"Timeout: {original_values['timeout']}s → {self.response_timeout_var.get()}s")
+                if original_values['thinking'] != self.show_thinking_var.get():
+                    thinking_status = "enabled" if self.show_thinking_var.get() else "disabled"
+                    changes.append(f"Show reasoning: {thinking_status}")
+                
+                if changes:
+                    self.show_status_message(f"Parameter changes: {'; '.join(changes)}")
+                else:
+                    self.show_status_message("No parameter changes made")
+                
+                dialog.destroy()
+                
+            except ValueError as e:
+                messagebox.showerror("Invalid Input", f"Please check your input values:\n{str(e)}")
+        
+        def cancel_settings():
+            """Cancel changes and restore original values."""
+            self.response_timeout_var.set(original_values['timeout'])
+            self.show_thinking_var.set(original_values['thinking'])
+            self.temperature_var.set(original_values['temperature'])
+            self.top_p_var.set(original_values['top_p'])
+            self.top_k_var.set(original_values['top_k'])
+            self.repeat_penalty_var.set(original_values['repeat_penalty'])
+            self.max_tokens_var.set(original_values['max_tokens'])
+            self.seed_var.set(original_values['seed'])
+            
+            self.show_status_message("Settings cancelled - original values restored")
+            dialog.destroy()
+        
+        def default_settings():
+            """Reset all settings to default values."""
+            self.response_timeout_var.set("60")
+            self.show_thinking_var.set(False)
+            self.temperature_var.set(0.7)
+            self.top_p_var.set(0.9)
+            self.top_k_var.set(40)
+            self.repeat_penalty_var.set(1.1)
+            self.max_tokens_var.set(0)
+            self.seed_var.set(-1)
+            
+            update_value_labels()
+            self.show_status_message("All parameters reset to default values")
+            dialog.destroy()
+        
+        # Buttons
+        ttk.Button(button_frame, text="Apply", command=apply_settings).pack(side=tk.RIGHT, padx=(5, 0))
+        ttk.Button(button_frame, text="Cancel", command=cancel_settings).pack(side=tk.RIGHT, padx=(5, 0))
+        ttk.Button(button_frame, text="Default", command=default_settings).pack(side=tk.RIGHT, padx=(5, 0))
+        
+        # Handle dialog close
+        dialog.protocol("WM_DELETE_WINDOW", cancel_settings)
+        
+        # Focus on dialog
+        dialog.focus_set()
     
 if __name__ == "__main__":
     import re
