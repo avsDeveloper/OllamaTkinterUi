@@ -9,6 +9,8 @@ import os
 import requests
 import json
 import re
+import webbrowser
+import getpass
 
 class OllamaGUI:
     def __init__(self, root):
@@ -130,9 +132,14 @@ class OllamaGUI:
         chat_label = ttk.Label(right_frame, text="Chat:")
         chat_label.pack(pady=(0, 5), anchor='w')
         
-        # Chat history display (read-only)
-        self.chat_display = scrolledtext.ScrolledText(right_frame, wrap=tk.WORD, font=('Arial', 11), state='disabled')
+        # Chat history display (read-only) with enhanced formatting support
+        self.chat_display = scrolledtext.ScrolledText(right_frame, wrap=tk.WORD, font=('Arial', 11), 
+                                                    state='disabled', bg='#FFFFFF', fg='#333333',
+                                                    selectbackground='#0078D4', selectforeground='white')
         self.chat_display.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        
+        # Configure text tags for rich formatting
+        self.setup_chat_formatting()
         
         # User input frame
         input_frame = ttk.Frame(right_frame)
@@ -239,6 +246,65 @@ class OllamaGUI:
         
         # Initial status update
         self.root.after(100, self.update_server_status_display)
+
+    def setup_chat_formatting(self):
+        """Configure text tags for rich formatting in the chat display."""
+        # User message styling
+        self.chat_display.tag_configure("user_label", font=('Arial', 11, 'bold'), foreground='#0078D4')
+        self.chat_display.tag_configure("user_text", font=('Arial', 11), foreground='#333333')
+        
+        # AI message styling
+        self.chat_display.tag_configure("ai_label", font=('Arial', 11, 'bold'), foreground='#16A085')
+        self.chat_display.tag_configure("ai_text", font=('Arial', 11), foreground='#333333')
+        
+        # Code block styling (for ```code``` blocks)
+        self.chat_display.tag_configure("code_block", font=('Consolas', 10), 
+                                      background='#F8F9FA', foreground='#333333',
+                                      relief=tk.FLAT, borderwidth=1)
+        
+        # Inline code styling (for `code` snippets)
+        self.chat_display.tag_configure("inline_code", font=('Consolas', 10), 
+                                      background='#F1F3F4', foreground='#D73A49',
+                                      relief=tk.FLAT)
+        
+        # Terminal/command output styling
+        self.chat_display.tag_configure("terminal", font=('Consolas', 10), 
+                                      background='#1E1E1E', foreground='#00FF00',
+                                      relief=tk.FLAT)
+        
+        # Bold text styling
+        self.chat_display.tag_configure("bold", font=('Arial', 11, 'bold'))
+        
+        # Italic text styling
+        self.chat_display.tag_configure("italic", font=('Arial', 11, 'italic'))
+        
+        # Headers styling
+        self.chat_display.tag_configure("header1", font=('Arial', 14, 'bold'), foreground='#2C3E50')
+        self.chat_display.tag_configure("header2", font=('Arial', 13, 'bold'), foreground='#34495E')
+        self.chat_display.tag_configure("header3", font=('Arial', 12, 'bold'), foreground='#7F8C8D')
+        
+        # List item styling
+        self.chat_display.tag_configure("list_item", font=('Arial', 11), lmargin1=20, lmargin2=20)
+        
+        # Quote styling
+        self.chat_display.tag_configure("quote", font=('Arial', 11, 'italic'), 
+                                      foreground='#7F8C8D', lmargin1=20, lmargin2=20)
+        
+        # Error/warning styling
+        self.chat_display.tag_configure("error", font=('Arial', 11), foreground='#E74C3C')
+        self.chat_display.tag_configure("warning", font=('Arial', 11), foreground='#F39C12')
+        self.chat_display.tag_configure("success", font=('Arial', 11), foreground='#27AE60')
+        
+        # Thinking tags styling (when visible)
+        self.chat_display.tag_configure("thinking", font=('Arial', 10, 'italic'), 
+                                      foreground='#95A5A6', background='#ECF0F1')
+        
+        # URL/link styling
+        self.chat_display.tag_configure("link", font=('Arial', 11, 'underline'), 
+                                      foreground='#0078D4')
+        
+        # Configure spacing
+        self.chat_display.tag_configure("spacing", spacing1=5, spacing3=5)
 
     def initialize_ollama(self):
         """Initialize Ollama server and load models on startup."""
@@ -1636,7 +1702,7 @@ Once installed, click 'Refresh' in the main application to detect models.
             
             # Re-enable controls
             download_btn.config(state='normal' if size_var.get() or model_entry.get().strip() else 'disabled')
-            cancel_btn.config(state='normal')
+            cancel_btn.config(text="Close", state='normal')
             model_dropdown.config(state='readonly')
             size_dropdown.config(state='readonly')
             model_entry.config(state='normal')
@@ -1655,12 +1721,6 @@ Once installed, click 'Refresh' in the main application to detect models.
                     self.user_input.config(state='normal')
                 if hasattr(self, 'send_button'):
                     self.send_button.config(state='normal')
-            else:
-                # Keep disabled if no model selected
-                if hasattr(self, 'user_input'):
-                    self.user_input.config(state='disabled')
-                if hasattr(self, 'send_button'):
-                    self.send_button.config(state='disabled')
         
         def download_complete(model_name):
             """Handle successful download completion."""
@@ -2422,6 +2482,12 @@ Once installed, click 'Refresh' in the main application to detect models.
         threading.Thread(target=load_model_info, daemon=True).start()
 
     def stop_generation(self):
+        """Stop the current model response generation."""
+        if not self.is_generating:
+            return
+            
+        self.is_generating = False  # Set this first to prevent error messages
+        
         """Stop the current model response generation."""
         if not self.is_generating:
             return
