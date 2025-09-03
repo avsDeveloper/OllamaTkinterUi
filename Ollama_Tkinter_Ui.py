@@ -2569,12 +2569,6 @@ Once installed, click 'Refresh' in the main application to detect models.
             
         self.is_generating = False  # Set this first to prevent error messages
         
-        """Stop the current model response generation."""
-        if not self.is_generating:
-            return
-            
-        self.is_generating = False  # Set this first to prevent error messages
-        
         if self.current_request:
             try:
                 # Close the current HTTP request
