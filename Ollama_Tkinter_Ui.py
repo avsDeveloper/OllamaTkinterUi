@@ -248,77 +248,26 @@ class OllamaGUI:
         self.root.after(100, self.update_server_status_display)
 
     def setup_chat_formatting(self):
-        """Configure text tags for rich formatting in the chat display."""
-        # User message styling
-        self.chat_display.tag_configure("user_label", font=('Arial', 11, 'bold'), foreground='#0078D4')
-        self.chat_display.tag_configure("user_text", font=('Arial', 11), foreground='#333333')
-        
-        # AI message styling
-        self.chat_display.tag_configure("ai_label", font=('Arial', 11, 'bold'), foreground='#16A085')
-        self.chat_display.tag_configure("ai_text", font=('Arial', 11), foreground='#333333')
-        
-        # Code block styling (for ```code``` blocks) - simple and clean
-        self.chat_display.tag_configure("code_block", font=('Consolas', 10), 
-                                      background='#F5F5F5', foreground='#333333',
-                                      relief=tk.FLAT, borderwidth=1, lmargin1=10, lmargin2=10,
-                                      spacing1=5, spacing3=5)
-        
-        # Inline code styling (for `code` snippets) - simple and clean
-        self.chat_display.tag_configure("inline_code", font=('Consolas', 10), 
-                                      background='#F0F0F0', foreground='#333333',
-                                      relief=tk.FLAT)
-        
-        # Terminal/command output styling
-        self.chat_display.tag_configure("terminal", font=('Consolas', 10), 
-                                      background='#1E1E1E', foreground='#00FF00',
-                                      relief=tk.FLAT)
-        
-        # Bold text styling
-        self.chat_display.tag_configure("bold", font=('Arial', 11, 'bold'))
-        
-        # Italic text styling
-        self.chat_display.tag_configure("italic", font=('Arial', 11, 'italic'))
-        
-        # Headers styling
-        self.chat_display.tag_configure("header1", font=('Arial', 14, 'bold'), foreground='#2C3E50')
-        self.chat_display.tag_configure("header2", font=('Arial', 13, 'bold'), foreground='#34495E')
-        self.chat_display.tag_configure("header3", font=('Arial', 12, 'bold'), foreground='#7F8C8D')
-        
-        # List item styling
-        self.chat_display.tag_configure("list_item", font=('Arial', 11), lmargin1=20, lmargin2=20)
-        
-        # Quote styling
-        self.chat_display.tag_configure("quote", font=('Arial', 11, 'italic'), 
-                                      foreground='#7F8C8D', lmargin1=20, lmargin2=20)
-        
-        # Error/warning styling
+        """Setup text formatting tags for the chat display"""
+        # Simplified tags - avoid complex overlapping
+        self.chat_display.tag_configure("user_label", font=('Arial', 11, 'bold'), foreground='#0066cc')
+        self.chat_display.tag_configure("ai_label", font=('Arial', 11, 'bold'), foreground='#009900')
+        self.chat_display.tag_configure("code_block", font=('Courier New', 10), background='#f5f5f5',
+                                      lmargin1=20, lmargin2=20, spacing1=5, spacing3=5)
         self.chat_display.tag_configure("error", font=('Arial', 11), foreground='#E74C3C')
         self.chat_display.tag_configure("warning", font=('Arial', 11), foreground='#F39C12')
         self.chat_display.tag_configure("success", font=('Arial', 11), foreground='#27AE60')
-        
-        # Thinking tags styling (when visible)
-        self.chat_display.tag_configure("thinking", font=('Arial', 10, 'italic'), 
-                                      foreground='#95A5A6', background='#ECF0F1')
-        
-        # URL/link styling
-        self.chat_display.tag_configure("link", font=('Arial', 11, 'underline'), 
-                                      foreground='#0078D4')
-        
-        # Configure spacing
-        self.chat_display.tag_configure("spacing", spacing1=5, spacing3=5)
 
     def format_and_insert_text(self, text, position="end"):
-        """Simple markdown cleanup - just remove markers, minimal formatting to avoid text disappearing."""
+        """Simple text insertion without complex formatting"""
         if not text:
             return
             
-        # Enable editing
         self.chat_display.config(state='normal')
         
-        # Simple markdown cleanup - just remove the markers, don't try complex formatting
+        # Just clean the markdown, don't apply complex formatting
         cleaned_text = self.clean_markdown_text(text)
         
-        # Insert the cleaned text
         if position == "end" or position == tk.END:
             self.chat_display.insert(tk.END, cleaned_text)
         else:
@@ -327,30 +276,28 @@ class OllamaGUI:
         self.chat_display.config(state='disabled')
     
     def clean_markdown_text(self, text):
-        """Remove markdown markers without complex formatting to prevent text disappearing."""
+        """Simple markdown removal - just strip markers, no formatting"""
         if not text:
             return text
         
-        # Simple regex replacements to remove markdown syntax
+        # Process in order to avoid conflicts
         cleaned = text
         
-        # Remove code blocks (```code```) - extract content only
-        cleaned = re.sub(r'```[a-zA-Z]*\n?(.*?)\n?```', r'\1', cleaned, flags=re.DOTALL)
+        # 1. Handle code blocks first (highest priority)
+        # Keep code content but remove the backticks
+        cleaned = re.sub(r'```[a-zA-Z]*\n?', '', cleaned)  # Remove opening ```
+        cleaned = re.sub(r'\n?```', '', cleaned)            # Remove closing ```
         
-        # Remove inline code markers (`code`) - extract content only
+        # 2. Handle inline code
         cleaned = re.sub(r'`([^`\n]+)`', r'\1', cleaned)
         
-        # Remove bold markers (**text**) - extract content only
+        # 3. Handle bold (must be before italic to avoid conflicts)
         cleaned = re.sub(r'\*\*([^*]+)\*\*', r'\1', cleaned)
-        
-        # Remove italic markers (*text*) - extract content only
-        cleaned = re.sub(r'\*([^*]+)\*', r'\1', cleaned)
-        
-        # Remove bold markers (__text__) - extract content only
         cleaned = re.sub(r'__([^_]+)__', r'\1', cleaned)
         
-        # Remove italic markers (_text_) - extract content only
-        cleaned = re.sub(r'_([^_]+)_', r'\1', cleaned)
+        # 4. Handle italic
+        cleaned = re.sub(r'\*([^*\n]+)\*', r'\1', cleaned)
+        cleaned = re.sub(r'_([^_\n]+)_', r'\1', cleaned)
         
         return cleaned
     
@@ -2911,41 +2858,42 @@ Once installed, click 'Refresh' in the main application to detect models.
         self.chat_display.see(tk.END)
 
     def finalize_chat_response(self):
-        """Finalize the chat response by cleaning up markdown and adding newlines."""
+        """Finalize the chat response - simplified version"""
         # Apply final filtering if thinking is disabled
-        response_to_clean = self.current_response
+        response_to_display = self.current_response
         if not self.show_thinking_var.get() and self.current_response:
-            response_to_clean = self.filter_thinking_tags(self.current_response)
+            response_to_display = self.filter_thinking_tags(self.current_response)
         
-        # Find the last "AI: " prompt and clean up its content
-        if response_to_clean:
+        # Find and update the AI response
+        if response_to_display:
             self.chat_display.config(state='normal')
+            
+            # Get all content
             content = self.chat_display.get("1.0", tk.END)
-            lines = content.split('\n')
             
-            # Find the last "AI: " prompt
-            ai_line_index = -1
-            for i, line in enumerate(lines):
-                if line.strip().startswith("AI: "):
-                    ai_line_index = i
+            # Find the last "AI: " position
+            last_ai_pos = content.rfind("AI: ")
             
-            if ai_line_index >= 0:
-                # Calculate position after "AI: "
-                ai_content_start = f"{ai_line_index + 1}.4"  # After "AI: "
+            if last_ai_pos != -1:
+                # Calculate text widget position
+                lines_before = content[:last_ai_pos].count('\n')
+                ai_line = lines_before + 1
+                ai_start = f"{ai_line}.4"  # Position after "AI: "
                 
-                # Get the current response text
-                current_ai_text = self.chat_display.get(ai_content_start, tk.END).strip()
+                # Get the raw response text that was streamed
+                raw_response = self.chat_display.get(ai_start, tk.END).strip()
                 
-                # Clean the markdown from the text
-                cleaned_text = self.clean_markdown_text(current_ai_text)
+                # Clean the markdown
+                cleaned_response = self.clean_markdown_text(raw_response)
                 
-                # Replace the content with cleaned version
-                self.chat_display.delete(ai_content_start, tk.END)
-                self.chat_display.insert(ai_content_start, cleaned_text)
-                self.chat_display.config(state='disabled')
-            else:
-                # Just disable the widget if we can't find AI prompt
-                self.chat_display.config(state='disabled')
+                # Only replace if text actually changed (to avoid flickering)
+                if raw_response != cleaned_response:
+                    # Delete old content
+                    self.chat_display.delete(ai_start, tk.END)
+                    # Insert cleaned content
+                    self.chat_display.insert(ai_start, cleaned_response)
+            
+            self.chat_display.config(state='disabled')
         
         # Add final newlines
         self.chat_display.config(state='normal')
@@ -2958,7 +2906,6 @@ Once installed, click 'Refresh' in the main application to detect models.
         
         # Add AI response to conversation history for token tracking
         if self.current_response:
-            # Use filtered response if thinking is disabled
             response_to_track = self.current_response
             if not self.show_thinking_var.get():
                 response_to_track = self.filter_thinking_tags(self.current_response)
