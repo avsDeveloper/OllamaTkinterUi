@@ -485,7 +485,7 @@ class OllamaGUI:
                             if len(parts) >= 11:
                                 process_user = parts[0]
                                 process_pid = parts[1]
-                                self.show_status_message(f"Found ollama serve process (PID: {process_pid}) running as: {process_user}")
+                                self.show_status_message(f"Found ollama serve process running as: {process_user}")
                                 
                                 # Check if it's the current user
                                 if process_user == current_user:
@@ -506,7 +506,7 @@ class OllamaGUI:
                 if pgrep_result.returncode == 0 and pgrep_result.stdout.strip():
                     # Found ollama serve process running as current user
                     pids = pgrep_result.stdout.strip().split('\n')
-                    self.show_status_message(f"pgrep confirms ollama serve running as {current_user} (PIDs: {', '.join(pids)})")
+                    self.show_status_message(f"ollama serve confirmed running as {current_user}")
                     return True
                 else:
                     # Check if it's running as system user
@@ -516,7 +516,7 @@ class OllamaGUI:
                     )
                     if pgrep_system.returncode == 0:
                         system_pids = pgrep_system.stdout.strip().split('\n')
-                        self.show_status_message(f"ollama serve found running as system process (PIDs: {', '.join(system_pids)})")
+                        self.show_status_message("ollama serve found running as system process")
                         return False
                 
             except Exception as e:
@@ -2108,7 +2108,6 @@ Once installed, click 'Refresh' in the main application to detect models.
                 # Wait for server to start
                 for i in range(15):
                     time.sleep(1)
-                    self.root.after(0, lambda i=i: self.show_status_message(f"Checking server startup... ({i+1}/15)"))
                     if self.is_ollama_server_running():
                         self.root.after(0, lambda: self.show_status_message("Ollama server started successfully by GUI!"))
                         self.root.after(0, self.refresh_models)
@@ -2301,7 +2300,6 @@ Once installed, click 'Refresh' in the main application to detect models.
             
         try:
             # Get model info using ollama show
-            self.show_status_message(f"Getting info for model: {model_name}")
             result = subprocess.run([self.ollama_path, "show", model_name], 
                                   capture_output=True, text=True, timeout=10)
             
@@ -2309,14 +2307,6 @@ Once installed, click 'Refresh' in the main application to detect models.
             
             if result.returncode == 0:
                 output = result.stdout
-                self.show_status_message(f"ollama show output received ({len(output)} chars)")
-                
-                # Log first few lines for debugging
-                lines = output.split('\n')[:5]
-                for i, line in enumerate(lines):
-                    if line.strip():
-                        self.show_status_message(f"Line {i+1}: {line[:80]}...")
-                
                 output_lower = output.lower()  # Convert to lowercase for easier parsing
                 
                 # Parse size information - look for patterns like "7b", "13b", "70b"
@@ -2332,7 +2322,6 @@ Once installed, click 'Refresh' in the main application to detect models.
                     if match:
                         size_num = match.group(1)
                         model_info["size"] = f"{size_num}B"
-                        self.show_status_message(f"Found size: {model_info['size']}")
                         break
                 
                 # Parse context window - look for various context patterns
@@ -2352,10 +2341,9 @@ Once installed, click 'Refresh' in the main application to detect models.
                             model_info["context"] = f"{context_size//1000}K"
                         else:
                             model_info["context"] = str(context_size)
-                        self.show_status_message(f"Found context: {model_info['context']}")
                         break
             else:
-                self.show_status_message(f"ollama show failed: {result.stderr}")
+                self.show_status_message(f"Unable to get model details: {result.stderr.strip()}")
             
             # Get current usage from ollama ps
             ps_result = subprocess.run([self.ollama_path, "ps"], 
@@ -2363,7 +2351,6 @@ Once installed, click 'Refresh' in the main application to detect models.
             
             if ps_result.returncode == 0:
                 ps_output = ps_result.stdout
-                self.show_status_message(f"ollama ps output: {ps_output[:100]}...")
                 
                 # Look for the model name in the ps output
                 model_base_name = model_name.split(':')[0]  # Remove tag if present
@@ -2376,7 +2363,6 @@ Once installed, click 'Refresh' in the main application to detect models.
                             memory_size = memory_match.group(1)
                             memory_unit = memory_match.group(2)
                             model_info["ram_usage"] = f"~{memory_size} {memory_unit}"
-                            self.show_status_message(f"Found RAM usage: {model_info['ram_usage']}")
                         else:
                             model_info["ram_usage"] = "Loaded"
                         
@@ -2395,19 +2381,17 @@ Once installed, click 'Refresh' in the main application to detect models.
                                 gpu_pct = usage_match.group(1)
                                 cpu_pct = usage_match.group(2)
                                 model_info["gpu_cpu_usage"] = f"{gpu_pct}%/{cpu_pct}%"
-                                self.show_status_message(f"Found CPU/GPU usage: {model_info['gpu_cpu_usage']}")
                                 break
                         else:
                             # If no percentage found in ollama ps output, get system-wide usage
                             gpu_usage, cpu_usage = self.get_system_usage_info()
                             model_info["gpu_cpu_usage"] = f"{gpu_usage}%/{cpu_usage}%"
-                            self.show_status_message(f"System CPU/GPU usage: {model_info['gpu_cpu_usage']}")
                         break
                 else:
                     model_info["ram_usage"] = "Loading"
                     model_info["gpu_cpu_usage"] = "0%/0%"
             else:
-                self.show_status_message(f"ollama ps failed: {ps_result.stderr}")
+                self.show_status_message(f"Unable to get model status: {ps_result.stderr.strip()}")
             
             return model_info
             
@@ -2499,7 +2483,11 @@ Once installed, click 'Refresh' in the main application to detect models.
             self.root.after(0, lambda: self.update_model_details(model_name, loading=False))
 
     def show_status_message(self, message):
-        """Show a status message in the logs display."""
+        """Show a status message in the logs display.
+        
+        Logs are kept clean and user-friendly, avoiding verbose technical details
+        like PIDs, character counts, or debug output that clutter the interface.
+        """
         try:
             self.logs_display.insert(tk.END, f">>> {message}\n")
             self.logs_display.see(tk.END)
