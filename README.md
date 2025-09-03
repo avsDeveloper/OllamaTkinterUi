@@ -1,6 +1,6 @@
 # Tkinter GUI for Ollama
 
-A **powerful and comprehensive** Python-based graphical user interface for [Ollama](https://ollama.ai), providing advanced AI chat functionality with features including **professional translation mode**, intelligent model download dialogs, system compatibility checking, real-time token tracking, response control, sophisticated server management, and configurable model parameters.
+A Python-based graphical user interface for [Ollama](https://ollama.ai), providing AI chat functionality with features including translation mode, model download dialogs, system compatibility checking, real-time token tracking, response control, server management, and configurable model parameters.
 
 **Proudly powered by [Ollama](https://ollama.ai)** 🚀
 
@@ -11,39 +11,47 @@ A **powerful and comprehensive** Python-based graphical user interface for [Olla
 
 ## 🚀 Overview
 
-This is a **comprehensive and feature-rich** GUI wrapper for Ollama that provides enterprise-grade features while maintaining ease of use:
+This is a GUI wrapper for Ollama that provides useful featur### � **Version 3.0 - Translation System**
+- **Translation Mode** - Dedicated translation interface with 70+ language support
+- **Auto-Language Detection** - Automatic detection of source languages
+- **Translation Styles** - Natural, Formal, Casual, Technical, and Literary translation options
+- **Quick Language Swapping** - One-click swap between source and target languages
+- **Real-time Translation** - Streaming translation results with live output
+- **Always-Visible Settings** - Translation controls remain visible but inactive in Chat mode for stable layout
+
+### ⚙️ **Model Parameter Control**maintaining ease of use:
 
 ### 🎯 **Core Capabilities**
-- **Dual-Mode Interface** - Professional Chat and Translation modes with seamless switching
-- **Smart Server Management** - Automatic start/stop with user context detection
-- **Advanced Model Downloads** - Professional dialog with system compatibility analysis
-- **Professional Translation System** - 70+ languages with auto-detect and style options
-- **Intelligent Chat Interface** - Real-time token tracking with context management
-- **Configurable Model Parameters** - Complete control over temperature, top-p, top-k, and more
-- **Professional Download System** - Progress tracking, background downloads, auto-cancellation
+- **Dual-Mode Interface** - Chat and Translation modes with seamless switching
+- **Server Management** - Automatic start/stop with user context detection
+- **Model Downloads** - Download dialog with system compatibility analysis
+- **Translation System** - 70+ languages with auto-detect and style options
+- **Chat Interface** - Real-time token tracking with context management
+- **Configurable Model Parameters** - Control over temperature, top-p, top-k, and more
+- **Download System** - Progress tracking, background downloads, auto-cancellation
 - **System Compatibility Analysis** - Real-time GPU/CPU/RAM assessment for model requirements
 - **Response Control** - Stop generation, configurable timeouts, <think> tag filtering
 - **Resource Monitoring** - Live system usage, model performance metrics
-- **Status Management** - Comprehensive logging with intelligent filtering
+- **Status Management** - Logging with intelligent filtering
 
 ### 🏆 **What Makes This Special**
-Perfect for users who need **advanced AI tools** with features like professional translation capabilities, system compatibility checking, background download management, real-time resource monitoring, configurable model parameters, and sophisticated conversation management, all wrapped in an intuitive desktop interface.
+Perfect for users who need AI tools with features like translation capabilities, system compatibility checking, background download management, real-time resource monitoring, configurable model parameters, and conversation management, all wrapped in an intuitive desktop interface.
 
 ## ✨ Features
 
-### 🌐 **Professional Translation Mode**
-- **Complete Translation Interface** - Dedicated translation mode with professional layout
-- **70+ Supported Languages** - Comprehensive language support from English to Zulu
+### 🌐 **Translation Mode**
+- **Translation Interface** - Dedicated translation mode with simple layout
+- **70+ Supported Languages** - Language support from English to Zulu
 - **Language Auto-Detection** - Automatically detect source language for seamless translation
 - **Translation Styles** - Natural, Formal, Casual, Technical, and Literary styles
 - **Quick Language Swapping** - One-click swap between source and target languages  
 - **Real-time Input Validation** - Smart enabling of translate button based on input
 - **Streaming Translation** - Live translation results with real-time output
 - **Copy & Clear Functions** - Easy result management with clipboard integration
-- **Model Parameter Integration** - Uses same advanced parameters as chat mode
+- **Model Parameter Integration** - Uses same parameters as chat mode
 - **Always-Visible Settings** - Translation settings visible but inactive in Chat mode for stable layout
 
-### 🤖 **Advanced Model Management**
+### 🤖 **Model Management**
 - **Auto-discovery** of installed Ollama models with real-time updates
 - **One-click model selection** with comprehensive information display
 - **Smart model preloading** for faster response times
@@ -52,64 +60,64 @@ Perfect for users who need **advanced AI tools** with features like professional
 - **Dynamic model refresh** with automatic selection of newly downloaded models
 - **Model Parameter Configuration** - Complete control over generation parameters
 
-### ⚙️ **Advanced Model Parameter Control**
-- **Professional Settings Dialog** - Comprehensive 500x600 tabbed interface for model configuration
+### ⚙️ **Model Parameter Control**
+- **Settings Dialog** - 500x600 tabbed interface for model configuration
 - **Response Settings** - Configurable timeout (default 60s) and thinking process display control
 - **Core Parameters**:
   - **Temperature** (0.1-2.0) - Controls randomness and creativity
   - **Top P** (0.1-1.0) - Nucleus sampling for token selection
   - **Top K** (1-100) - Limits choices to top K most likely tokens
   - **Repeat Penalty** (0.5-2.0) - Reduces repetition in responses
-- **Advanced Parameters**:
+- **Additional Parameters**:
   - **Max Tokens** (0-4096) - Limits response length (0 = no limit)
   - **Seed** (-1 to 999999) - For reproducible outputs (-1 = random)
 - **Real-time Value Display** - Live parameter values with descriptive explanations
-- **Apply/Cancel/Default** - Professional dialog controls with change logging
+- **Apply/Cancel/Default** - Dialog controls with change logging
 - **Parameter Persistence** - Settings maintained across model switches
 - **Detailed Descriptions** - Clear explanations for each parameter's effect
 
 ### 🎭 **Dual-Mode Interface Design**
-- **Chat Mode** - Traditional AI conversation interface with advanced token management
-- **Translation Mode** - Professional translation interface with language controls
-- **Seamless Mode Switching** - One-click switching with proper state management
+- **Chat Mode** - Traditional AI conversation interface with token management
+- **Translation Mode** - Translation interface with language controls
+- **Mode Switching** - One-click switching with proper state management
 - **Stable Layout** - Fixed heights prevent UI jumping when switching modes
 - **Visual Mode Indicators** - Clear checkmarks (✓) show active mode
 - **Context-Aware Controls** - Translation settings disabled but visible in Chat mode
 - **Consistent Experience** - Same model parameters apply to both modes
 
 ### 🛠️ **Built-in Installation Guide**
-- **Comprehensive Help System** - Built-in installation guide accessible via Help menu
-- **Platform-Specific Instructions** - Detailed setup for Ubuntu, Fedora, Arch, macOS, and Windows
-- **Popular Model Recommendations** - Curated list of recommended models with descriptions
+- **Help System** - Built-in installation guide accessible via Help menu
+- **Platform-Specific Instructions** - Setup for Ubuntu, Fedora, Arch, macOS, and Windows
+- **Model Recommendations** - List of recommended models with descriptions
 - **Troubleshooting Section** - Common issues and solutions
 - **Copy-to-Clipboard** - Easy copying of installation commands
-- **Professional Formatting** - 700x600 scrollable window with syntax highlighting
+- **Formatting** - 700x600 scrollable window with syntax highlighting
 
-### 🎯 **Professional Download System**
-- **Advanced Download Dialog** - Professional 700x650 modal with comprehensive features
-- **Smart Model Discovery** - Auto-loads available models from multiple Ollama sources
+### 🎯 **Download System**
+- **Download Dialog** - 700x650 modal with features
+- **Model Discovery** - Auto-loads available models from multiple Ollama sources
 - **Size Selection** - Dynamic size dropdown with auto-detection for each model
 - **Manual Entry Support** - Direct model name input for any Ollama-compatible model
-- **Already Downloaded Detection** - Prevents duplicate downloads with intelligent checking
+- **Already Downloaded Detection** - Prevents duplicate downloads with checking
 - **Model Information Display** - Shows capabilities, download stats, descriptions
 - **Real-time Progress Tracking** - Live download progress with percentage and status
 - **Background Download Support** - Dialog auto-closes while downloads continue
 - **Download Cancellation** - Both dialog and main window cancellation options
-- **Error Handling** - Comprehensive error recovery and user feedback
+- **Error Handling** - Error recovery and user feedback
 
 ### 🔬 **System Compatibility Analysis**
-- **Intelligent Hardware Detection** - Automatic GPU VRAM and system RAM detection
+- **Hardware Detection** - Automatic GPU VRAM and system RAM detection
 - **Model Requirements Assessment** - Analysis of 8 model categories (micro to massive)
 - **Multi-mode Compatibility** - GPU-only, CPU-only, and Hybrid GPU+CPU analysis
 - **Real-time VRAM/RAM Checking** - Live assessment based on actual system resources
-- **Performance Predictions** - Accurate performance estimates for each configuration
+- **Performance Predictions** - Performance estimates for each configuration
 - **Visual Feedback** - Color-coded compatibility indicators (✅🟢, ⚠️🟠, ❌🔴)
-- **Smart Recommendations** - Suggests optimal hardware configuration for each model
-- **Enterprise Model Support** - Handles massive models (180B-670B parameters)
+- **Recommendations** - Suggests optimal hardware configuration for each model
+- **Large Model Support** - Handles massive models (180B-670B parameters)
 
-### 💬 **Intelligent Chat Interface**
+### 💬 **Chat Interface**
 - **Real-time streaming chat** with selected AI models
-- **Advanced Token Management** - Live token counting with conversation history tracking
+- **Token Management** - Live token counting with conversation history tracking
 - **Dynamic Token Counter** - Shows current usage vs. model context limit
 - **Color-coded Token Warnings** - Green → Orange → Red progression with ⚡⚠️ icons
 - **Context Window Integration** - Automatic detection from model information
@@ -117,12 +125,12 @@ Perfect for users who need **advanced AI tools** with features like professional
 - **<think> Tag Filtering** - Toggle to show/hide model reasoning processes
 - **Configurable Timeouts** for model response handling (default 60s)
 - **Enter Key Support** for quick message sending
-- **Professional Chat Formatting** with proper message structure
+- **Chat Formatting** with proper message structure
 - **Conversation Reset** when changing models for accurate token counting
 
 ### 🎛️ **Response Control & Monitoring**
 - **Instant Stop Generation** - Cancel ongoing model responses immediately
-- **Smart Button States** - Context-aware UI with "Send"/"Stop" switching
+- **Button States** - Context-aware UI with "Send"/"Stop" switching
 - **Token Usage Analytics** - Real-time display with percentage warnings
 - **Response Timeout Configuration** - Adjustable timeout settings
 - **Thinking Process Control** - Show/hide model <think> reasoning tags
@@ -130,9 +138,9 @@ Perfect for users who need **advanced AI tools** with features like professional
 - **HTTP Request Cancellation** - Clean cancellation of streaming responses
 - **Progress Indicators** - Visual feedback for all long-running operations
 
-### 🔧 **Smart Server Management**
+### 🔧 **Server Management**
 - **Automatic Server Startup** - No manual `ollama serve` needed
-- **Intelligent Server Detection** - Distinguishes user-started vs system-started servers
+- **Server Detection** - Distinguishes user-started vs system-started servers
 - **Server Context Management** - Handles user vs system context issues
 - **Real-time Status Monitoring** - Live server status with color-coded indicators
 - **One-click Server Restart** - Easy restart to user context when needed
@@ -141,25 +149,25 @@ Perfect for users who need **advanced AI tools** with features like professional
 - **Multi-path Detection** for various Ollama installations
 - **Server Status Indicators** - 🟢 User context, 🟠 System context, 🔴 Offline
 
-### 📊 **Comprehensive System Monitoring**
+### 📊 **System Monitoring**
 - **Live Resource Tracking** - Real-time RAM, GPU/CPU usage monitoring
 - **Model Performance Metrics** - Memory usage, processing statistics
 - **Download Progress Monitoring** - Live status with cancellation support
-- **Intelligent Log Filtering** - Reduced repetitive messages, focused insights
-- **Loading State Management** - Professional loading indicators for all operations
+- **Log Filtering** - Reduced repetitive messages, focused insights
+- **Loading State Management** - Loading indicators for all operations
 - **Visual Status Feedback** - Color-coded status for all system components
 - **Debug Information** - Detailed process detection and system analysis
 - **Background Operation Support** - Continue operations without blocking UI
 
-### 🎨 **Professional User Experience**
+### 🎨 **User Experience**
 - **Optimized Layout** - 1400x900 window with responsive design
 - **Strategic Button Placement** - Send/Stop buttons with token counter in bottom-right
-- **Modal Dialog System** - Professional download dialogs with full feature sets
+- **Modal Dialog System** - Download dialogs with full feature sets
 - **Keyboard Shortcuts** - Enter to send, Escape to cancel dialogs
-- **Smart UI States** - Context-aware enabling/disabling of controls
+- **UI States** - Context-aware enabling/disabling of controls
 - **Visual Warning System** - Icons and colors for critical information
-- **Auto-close Dialogs** - Intelligent dialog management for better workflow
-- **Professional Status Messages** - Clear, informative system feedback
+- **Auto-close Dialogs** - Dialog management for better workflow
+- **Status Messages** - Clear, informative system feedback
 - **Responsive Controls** - All elements adapt to current system state
 
 ### 🔄 **Background Download Management**
@@ -172,8 +180,8 @@ Perfect for users who need **advanced AI tools** with features like professional
 - **Error Recovery** - Robust error handling for closed dialogs
 - **Download Completion** - Auto-refresh models and selection after completion
 
-### 🛡️ **Enterprise-Grade Reliability**
-- **Error Recovery** - Comprehensive exception handling throughout
+### 🛡️ **Reliability**
+- **Error Recovery** - Exception handling throughout
 - **Protected UI Updates** - Safe updates even when dialogs are closed
 - **Thread Safety** - Background operations with proper synchronization
 - **Resource Cleanup** - Proper cleanup of processes and connections
@@ -288,9 +296,9 @@ python3 Ollama_Tkinter_Ui.py
 - **Server Restart**: Click "Restart Ollama" to restart in user context if needed
 - **Real-time Updates**: Status changes automatically detected and displayed
 
-### **Professional Model Download System**
+### **Model Download System**
 
-#### **Using the Advanced Download Dialog**
+#### **Using the Download Dialog**
 1. **Open Download Dialog**: Click **"Download"** button next to model dropdown
 2. **Model Selection Options**:
    - **From Available Models**: Select from auto-loaded model list with metadata
@@ -311,15 +319,15 @@ python3 Ollama_Tkinter_Ui.py
    - Download status shown in main window status bar
 
 #### **System Compatibility Assessment**
-The download dialog provides intelligent compatibility analysis:
+The download dialog provides compatibility analysis:
 - **GPU VRAM Detection**: Automatic detection via nvidia-smi
 - **System RAM Analysis**: Real-time available memory calculation  
 - **Model Size Categories**: 8 categories from micro (1-2B) to massive (400B+)
-- **Performance Predictions**: Accurate estimates for each hardware configuration
+- **Performance Predictions**: Estimates for each hardware configuration
 - **Resource Requirements**: Specific VRAM/RAM requirements for each model
 - **Color-coded Results**: ✅ Compatible, ⚠️ Tight fit, ❌ Insufficient resources
 
-### **Advanced Chat Features**
+### **Chat Features**
 
 #### **Token Management**
 - **Real-time Tracking**: Monitor token usage in bottom-right corner
@@ -344,22 +352,22 @@ The download dialog provides intelligent compatibility analysis:
 - **Token Counter Integration**: Real-time updates during conversation
 - **Model-specific Limits**: Accurate limits based on selected model's context window
 
-### **Professional Translation Mode**
+### **Translation Mode**
 
 #### **Switching to Translation Mode**
 1. **Select a Model**: Ensure you have a model selected (required for translation)
 2. **Click Translation Mode**: Click the **🌐 Translator** button in the Mode section
-3. **Translation Interface**: Right panel switches to professional translation layout
+3. **Translation Interface**: Right panel switches to translation layout
 4. **Language Configuration**: Configure translation settings in the left panel
 
 #### **Translation Settings Configuration**
 - **Source Language**: Select from 70+ supported languages or use Auto-detect
-- **Target Language**: Choose destination language from comprehensive list
+- **Target Language**: Choose destination language from list
 - **Language Swapping**: Click **⇄** button to quickly swap source and target languages
 - **Auto-detect**: Enable checkbox to automatically detect source language
 - **Translation Style**: Choose from:
   - **Natural** - Conversational and fluent
-  - **Formal** - Professional and structured
+  - **Formal** - Structured
   - **Casual** - Informal and relaxed
   - **Technical** - Precise technical terminology
   - **Literary** - Eloquent and expressive
@@ -377,10 +385,10 @@ The download dialog provides intelligent compatibility analysis:
 
 #### **Translation Features**
 - **Streaming Translation**: Real-time translation output with live streaming
-- **Model Parameter Integration**: Uses same advanced parameters as chat mode
-- **Professional Layout**: Dedicated translation interface optimized for language work
+- **Model Parameter Integration**: Uses same parameters as chat mode
+- **Layout**: Dedicated translation interface optimized for language work
 - **Input Validation**: Smart enabling of translate button based on input content
-- **Error Handling**: Comprehensive error recovery with user feedback
+- **Error Handling**: Error recovery with user feedback
 - **Context-Aware UI**: Translation settings remain visible but inactive in Chat mode
 
 ### **Chatting with Models**
@@ -398,17 +406,17 @@ The download dialog provides intelligent compatibility analysis:
    - Press **Enter** or click **"Send"** to chat
    - Monitor real-time token usage in bottom-right
    - Use **"Stop"** button to cancel responses if needed
-5. **Advanced Features**:
+5. **Additional Features**:
    - Automatic conversation history tracking
    - Context window management
-   - Professional message formatting
+   - Message formatting
 
-### **Advanced Model Parameter Configuration**
+### **Model Parameter Configuration**
 
 #### **Accessing the Settings Dialog**
 1. **Select a Model**: Ensure you have a model selected (required for configuration)
 2. **Open Settings**: Click **Settings → Model Parameters** in the menu bar
-3. **Professional Interface**: 500x600 tabbed dialog opens with comprehensive controls
+3. **Interface**: 500x600 tabbed dialog opens with controls
 
 #### **General Settings Tab**
 - **Response Timeout**: Configure how long to wait for model responses (default 60s)
@@ -756,6 +764,22 @@ OllamaTkinterUi/
 
 ### **Advanced Features Implementation**
 
+#### **Professional Translation System**
+- **Dual-Mode Architecture** - Seamless switching between Chat and Translation modes
+- **Language Detection Engine** - Automatic source language identification
+- **Translation Style Control** - Multiple style options with parameter integration
+- **Real-time Processing** - Streaming translation with live output updates
+- **UI State Management** - Context-aware enabling/disabling of translation controls
+- **Layout Stability** - Always-visible settings prevent UI jumping during mode switches
+
+#### **Model Parameter Configuration System**
+- **Professional Dialog Interface** - Tabbed 500x600 configuration window
+- **Real-time Parameter Display** - Live value updates with descriptive explanations
+- **Parameter Validation** - Input validation with error handling and user feedback
+- **Change Tracking** - Comprehensive logging of all parameter modifications
+- **State Persistence** - Settings maintained across model switches and application sessions
+- **Default Management** - Easy reset to default values with one-click restoration
+
 #### **Background Download Management**
 - **Thread Safety** - Protected UI updates using root.after() scheduling
 - **Dialog State Management** - Continues operations when dialogs are closed
@@ -801,13 +825,13 @@ OllamaTkinterUi/
 - **Real-time Translation** - Streaming translation results with live output
 - **Always-Visible Settings** - Translation controls remain visible but inactive in Chat mode for stable layout
 
-### ⚙️ **Advanced Model Parameter Control**
-- **Professional Settings Dialog** - Comprehensive 500x600 tabbed interface for complete model configuration
+### ⚙️ **Model Parameter Control**
+- **Settings Dialog** - 500x600 tabbed interface for model configuration
 - **Core Parameter Control** - Temperature, Top P, Top K, and Repeat Penalty with live value display
-- **Advanced Options** - Max Tokens and Seed configuration for precise control
+- **Additional Options** - Max Tokens and Seed configuration for precise control
 - **Parameter Persistence** - Settings maintained across model switches and sessions
 - **Change Logging** - All parameter modifications logged with before/after values
-- **Apply/Cancel/Default** - Professional dialog controls with validation and error handling
+- **Apply/Cancel/Default** - Dialog controls with validation and error handling
 
 ### 🎭 **Dual-Mode Interface Architecture**
 - **Seamless Mode Switching** - One-click switching between Chat and Translation modes
@@ -825,9 +849,9 @@ OllamaTkinterUi/
 
 ### 🎯 **Enhanced Layout & UI Stability**
 - **Fixed Model Information Display** - Always shows exactly 5 lines of model details for consistent layout
-- **Strategic Component Placement** - Token counter in bottom-right, mode controls in left panel
+- **Component Placement** - Token counter in bottom-right, mode controls in left panel
 - **Responsive Design** - All elements adapt to current system state without layout shifts
-- **Professional Status Management** - Color-coded indicators throughout interface with clear meanings
+- **Status Management** - Color-coded indicators throughout interface with clear meanings
 - **Keyboard Accessibility** - Full keyboard navigation with Enter/Escape shortcuts
 
 ### 🧠 **Enhanced Token Management & Chat Features**
@@ -835,12 +859,12 @@ OllamaTkinterUi/
 - **Color-coded Warning System** - Progressive Green → Orange → Red indicators with ⚡⚠️ icons
 - **Context Window Integration** - Automatic detection from model information
 - **Conversation Reset Management** - Automatic reset when changing models for accurate tracking
-- **Professional Response Control** - Instant stop generation with clean HTTP cancellation
+- **Response Control** - Instant stop generation with clean HTTP cancellation
 
-### 🛡️ **Enterprise-Grade Reliability & Performance**
+### 🛡️ **Reliability & Performance**
 - **Protected UI Updates** - Safe updates even when dialogs are closed or states change
 - **Thread Safety** - Background operations with proper synchronization
-- **Error Recovery Framework** - Comprehensive exception handling with graceful degradation
+- **Error Recovery Framework** - Exception handling with graceful degradation
 - **Resource Management** - Automatic cleanup of processes and connections
 - **Cross-platform Stability** - Reliable operation on Linux, macOS, and Windows
 - **Memory Optimization** - Efficient handling of large model operations and long conversations
@@ -887,6 +911,6 @@ This project is an independent third-party application and is not officially aff
 
 ---
 
-**Powerful. Intuitive. Feature-Rich.** 🎯
+**Simple. Intuitive. Feature-Rich.** 🎯
 
-*A comprehensive GUI that brings advanced AI chat capabilities to your desktop while maintaining ease of use. Perfect for both casual users and power users who need sophisticated conversation management.*
+*A GUI that brings AI chat and translation capabilities to your desktop while maintaining ease of use. Perfect for both casual users and power users who need conversation management, multilingual translation, and model configuration.*
