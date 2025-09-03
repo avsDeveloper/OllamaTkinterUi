@@ -257,14 +257,15 @@ class OllamaGUI:
         self.chat_display.tag_configure("ai_label", font=('Arial', 11, 'bold'), foreground='#16A085')
         self.chat_display.tag_configure("ai_text", font=('Arial', 11), foreground='#333333')
         
-        # Code block styling (for ```code``` blocks)
+        # Code block styling (for ```code``` blocks) - simple and clean
         self.chat_display.tag_configure("code_block", font=('Consolas', 10), 
-                                      background='#F8F9FA', foreground='#333333',
-                                      relief=tk.FLAT, borderwidth=1)
+                                      background='#F5F5F5', foreground='#333333',
+                                      relief=tk.FLAT, borderwidth=1, lmargin1=10, lmargin2=10,
+                                      spacing1=5, spacing3=5)
         
-        # Inline code styling (for `code` snippets)
+        # Inline code styling (for `code` snippets) - simple and clean
         self.chat_display.tag_configure("inline_code", font=('Consolas', 10), 
-                                      background='#F1F3F4', foreground='#D73A49',
+                                      background='#F0F0F0', foreground='#333333',
                                       relief=tk.FLAT)
         
         # Terminal/command output styling
@@ -305,6 +306,139 @@ class OllamaGUI:
         
         # Configure spacing
         self.chat_display.tag_configure("spacing", spacing1=5, spacing3=5)
+
+    def format_and_insert_text(self, text, position="end"):
+        """Simple markdown cleanup - just remove markers, minimal formatting to avoid text disappearing."""
+        if not text:
+            return
+            
+        # Enable editing
+        self.chat_display.config(state='normal')
+        
+        # Simple markdown cleanup - just remove the markers, don't try complex formatting
+        cleaned_text = self.clean_markdown_text(text)
+        
+        # Insert the cleaned text
+        if position == "end" or position == tk.END:
+            self.chat_display.insert(tk.END, cleaned_text)
+        else:
+            self.chat_display.insert(position, cleaned_text)
+        
+        self.chat_display.config(state='disabled')
+    
+    def clean_markdown_text(self, text):
+        """Remove markdown markers without complex formatting to prevent text disappearing."""
+        if not text:
+            return text
+        
+        # Simple regex replacements to remove markdown syntax
+        cleaned = text
+        
+        # Remove code blocks (```code```) - extract content only
+        cleaned = re.sub(r'```[a-zA-Z]*\n?(.*?)\n?```', r'\1', cleaned, flags=re.DOTALL)
+        
+        # Remove inline code markers (`code`) - extract content only
+        cleaned = re.sub(r'`([^`\n]+)`', r'\1', cleaned)
+        
+        # Remove bold markers (**text**) - extract content only
+        cleaned = re.sub(r'\*\*([^*]+)\*\*', r'\1', cleaned)
+        
+        # Remove italic markers (*text*) - extract content only
+        cleaned = re.sub(r'\*([^*]+)\*', r'\1', cleaned)
+        
+        # Remove bold markers (__text__) - extract content only
+        cleaned = re.sub(r'__([^_]+)__', r'\1', cleaned)
+        
+        # Remove italic markers (_text_) - extract content only
+        cleaned = re.sub(r'_([^_]+)_', r'\1', cleaned)
+        
+        return cleaned
+    
+    def _parse_markdown(self, text):
+        """Parse markdown text and return list of (type, content) tuples."""
+        parts = []
+        remaining_text = text
+        
+        # First, handle code blocks (```code```) - highest priority
+        # Updated pattern to handle optional newlines for better compatibility
+        code_block_pattern = r'```[a-zA-Z]*\n?(.*?)\n?```'
+        last_end = 0
+        
+        for match in re.finditer(code_block_pattern, remaining_text, re.DOTALL):
+            # Add text before code block
+            if match.start() > last_end:
+                before_text = remaining_text[last_end:match.start()]
+                if before_text:
+                    # Parse other markdown in the text before code block
+                    inline_parts = self._parse_inline_markdown(before_text)
+                    parts.extend(inline_parts)
+            
+            # Add code block (without the ``` markers)
+            code_content = match.group(1)
+            parts.append(("code_block", code_content))
+            last_end = match.end()
+        
+        # Add remaining text after last code block
+        if last_end < len(remaining_text):
+            remaining = remaining_text[last_end:]
+            if remaining:
+                # Parse other markdown in remaining text
+                inline_parts = self._parse_inline_markdown(remaining)
+                parts.extend(inline_parts)
+        
+        # If no code blocks found, just parse inline markdown
+        if not parts:
+            parts = self._parse_inline_markdown(remaining_text)
+        
+        return parts
+    
+    def _parse_inline_markdown(self, text):
+        """Parse inline markdown (code, bold, italic) and return list of (type, content) tuples."""
+        parts = []
+        remaining = text
+        
+        # Process patterns in order: inline code, bold, italic, then regular text
+        patterns = [
+            (r'`([^`\n]+)`', 'inline_code'),  # `code` - highest priority
+            (r'\*\*([^*]+)\*\*', 'bold'),     # **bold**
+            (r'\*([^*]+)\*', 'italic'),       # *italic*
+            (r'__([^_]+)__', 'bold'),         # __bold__
+            (r'_([^_]+)_', 'italic'),         # _italic_
+        ]
+        
+        while remaining:
+            earliest_match = None
+            earliest_pos = len(remaining)
+            pattern_info = None
+            
+            # Find the earliest markdown pattern
+            for pattern, format_type in patterns:
+                match = re.search(pattern, remaining)
+                if match and match.start() < earliest_pos:
+                    earliest_match = match
+                    earliest_pos = match.start()
+                    pattern_info = (pattern, format_type)
+            
+            if earliest_match:
+                # Add text before the match
+                if earliest_pos > 0:
+                    before_text = remaining[:earliest_pos]
+                    if before_text:
+                        parts.append(("text", before_text))
+                
+                # Add the formatted content (without markers)
+                content = earliest_match.group(1)
+                parts.append((pattern_info[1], content))
+                
+                # Continue with remaining text after the match
+                remaining = remaining[earliest_match.end():]
+            else:
+                # No more patterns found, add remaining as regular text
+                if remaining:
+                    parts.append(("text", remaining))
+                break
+        
+        return parts
 
     def initialize_ollama(self):
         """Initialize Ollama server and load models on startup."""
@@ -2732,6 +2866,9 @@ Once installed, click 'Refresh' in the main application to detect models.
         # Accumulate the response
         self.current_response += chunk
         
+        # For streaming, we'll show the text without markdown formatting during typing
+        # and apply formatting at the end to avoid flickering and partial markdown issues
+        
         # If thinking is disabled, we need to be smart about filtering
         if not self.show_thinking_var.get():
             # Check if we're inside a thinking block
@@ -2767,39 +2904,50 @@ Once installed, click 'Refresh' in the main application to detect models.
                 return
         
         # Normal case: either thinking is enabled or no thinking tags in chunk
+        # Just append the raw chunk - formatting will be applied at the end
         self.chat_display.config(state='normal')
         self.chat_display.insert(tk.END, chunk)
         self.chat_display.config(state='disabled')
         self.chat_display.see(tk.END)
 
     def finalize_chat_response(self):
-        """Finalize the chat response by adding newlines and resetting input."""
+        """Finalize the chat response by cleaning up markdown and adding newlines."""
         # Apply final filtering if thinking is disabled
+        response_to_clean = self.current_response
         if not self.show_thinking_var.get() and self.current_response:
-            filtered_response = self.filter_thinking_tags(self.current_response)
+            response_to_clean = self.filter_thinking_tags(self.current_response)
+        
+        # Find the last "AI: " prompt and clean up its content
+        if response_to_clean:
+            self.chat_display.config(state='normal')
+            content = self.chat_display.get("1.0", tk.END)
+            lines = content.split('\n')
             
-            # If the filtered response is different, update the display
-            if filtered_response != self.current_response:
-                self.chat_display.config(state='normal')
-                content = self.chat_display.get("1.0", tk.END)
-                lines = content.split('\n')
+            # Find the last "AI: " prompt
+            ai_line_index = -1
+            for i, line in enumerate(lines):
+                if line.strip().startswith("AI: "):
+                    ai_line_index = i
+            
+            if ai_line_index >= 0:
+                # Calculate position after "AI: "
+                ai_content_start = f"{ai_line_index + 1}.4"  # After "AI: "
                 
-                # Find the last "AI: " prompt
-                ai_line_index = -1
-                for i, line in enumerate(lines):
-                    if line.strip().startswith("AI: "):
-                        ai_line_index = i
+                # Get the current response text
+                current_ai_text = self.chat_display.get(ai_content_start, tk.END).strip()
                 
-                if ai_line_index >= 0:
-                    # Calculate position after "AI: "
-                    ai_content_start = f"{ai_line_index + 1}.4"  # After "AI: "
-                    
-                    # Delete everything after "AI: " and insert filtered response
-                    self.chat_display.delete(ai_content_start, tk.END)
-                    self.chat_display.insert(ai_content_start, filtered_response)
+                # Clean the markdown from the text
+                cleaned_text = self.clean_markdown_text(current_ai_text)
+                
+                # Replace the content with cleaned version
+                self.chat_display.delete(ai_content_start, tk.END)
+                self.chat_display.insert(ai_content_start, cleaned_text)
+                self.chat_display.config(state='disabled')
+            else:
+                # Just disable the widget if we can't find AI prompt
                 self.chat_display.config(state='disabled')
         
-        # Add final newlines and focus on input
+        # Add final newlines
         self.chat_display.config(state='normal')
         self.chat_display.insert(tk.END, "\n\n")
         self.chat_display.config(state='disabled')
