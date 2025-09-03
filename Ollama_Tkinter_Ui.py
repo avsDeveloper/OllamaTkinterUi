@@ -15,7 +15,7 @@ import getpass
 class OllamaGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("Tkinter GUI for Ollama")
+        self.root.title("Tkinter GUI for Ollama - Chat Mode")
         self.root.geometry("1400x900")
 
         # Menu bar
@@ -40,7 +40,7 @@ class OllamaGUI:
         content_frame.pack(fill=tk.BOTH, expand=True)
         
         # Left panel for controls and logs
-        left_frame = ttk.Frame(content_frame, width=350)
+        left_frame = ttk.Frame(content_frame, width=400)
         left_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10))
         left_frame.pack_propagate(False)  # Maintain fixed width
         
@@ -49,19 +49,28 @@ class OllamaGUI:
         right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
 
         # Server Status Section (in left panel)
-        server_status_frame = ttk.Frame(left_frame)
-        server_status_frame.pack(pady=(0, 10), fill=tk.X)
+        server_section_frame = ttk.Frame(left_frame)
+        server_section_frame.pack(pady=(0, 10), fill=tk.X)
+        
+        # Server section header
+        server_header = ttk.Label(server_section_frame, text="Ollama Server:", 
+                                 font=('Arial', 10, 'bold'))
+        server_header.pack(anchor='w', pady=(0, 5))
+        
+        # Server status frame (status + restart button on same line)
+        server_status_frame = ttk.Frame(server_section_frame)
+        server_status_frame.pack(fill=tk.X)
         
         # Server status label
         self.server_status_label = ttk.Label(server_status_frame, 
                                            text="Server Status: Checking...", 
                                            foreground="#1976D2", 
                                            font=('Arial', 10))
-        self.server_status_label.pack(pady=(0, 5), anchor='w')
+        self.server_status_label.pack(side=tk.LEFT, anchor='w')
         
-        # Restart button under server status
-        self.restart_button = ttk.Button(server_status_frame, text="Restart Ollama", command=self.restart_ollama_server)
-        self.restart_button.pack(anchor='w', pady=(0, 5))
+        # Restart button at the end of status line
+        self.restart_button = ttk.Button(server_status_frame, text="Restart", command=self.restart_ollama_server)
+        self.restart_button.pack(side=tk.RIGHT)
 
         # Model Selection (in left panel)
         self.model_label = ttk.Label(left_frame, text="Select Model:")
@@ -95,36 +104,91 @@ class OllamaGUI:
         self.download_status_label = ttk.Label(model_frame, text="", foreground="#1976D2", font=('Arial', 9))
         self.download_status_label.pack(pady=(5, 0), anchor='w')
         
-        # Model selection notification
-        self.model_notification = ttk.Label(model_frame, text="⚠️ No model selected", foreground="red", font=('Arial', 9))
-        self.model_notification.pack(pady=(5, 0), anchor='w')
+        # Model details display - fixed height container to prevent UI jumping (always 5 lines)
+        self.model_details_container = ttk.Frame(model_frame, height=100)  # Fixed height for 5 lines
+        self.model_details_container.pack(pady=(2, 0), fill=tk.X)
+        self.model_details_container.pack_propagate(False)  # Prevent shrinking
         
-        # Model details display (replaces the notification when model is selected)
-        self.model_details_frame = ttk.Frame(model_frame)
-        self.model_details_frame.pack(pady=(5, 0), fill=tk.X)
+        # Create 5 fixed lines for model details (always visible)
+        self.model_detail_lines = []
+        for i in range(5):
+            line_label = ttk.Label(self.model_details_container, text="", 
+                                 foreground="green", font=('Arial', 9))
+            line_label.pack(anchor='w')
+            self.model_detail_lines.append(line_label)
         
-        self.model_name_label = ttk.Label(self.model_details_frame, text="Selected model: ", 
-                                        foreground="green", font=('Arial', 9))
-        self.model_name_label.pack(anchor='w')
+        # Set initial state - no model selected
+        self.model_detail_lines[0].config(text="⚠️ No model selected", foreground="red")
         
-        self.model_size_label = ttk.Label(self.model_details_frame, text="Model size: ", 
-                                        foreground="green", font=('Arial', 9))
-        self.model_size_label.pack(anchor='w')
+        # Mode Selection Section (in left panel, after model selection)
+        mode_frame = ttk.Frame(left_frame)
+        mode_frame.pack(pady=(10, 0), fill=tk.X)
         
-        self.model_ram_label = ttk.Label(self.model_details_frame, text="RAM usage: ", 
-                                       foreground="green", font=('Arial', 9))
-        self.model_ram_label.pack(anchor='w')
+        mode_label = ttk.Label(mode_frame, text="Mode:", font=('Arial', 10, 'bold'))
+        mode_label.pack(anchor='w', pady=(0, 5))
         
-        self.model_usage_label = ttk.Label(self.model_details_frame, text="CPU/GPU usage: ", 
-                                         foreground="green", font=('Arial', 9))
-        self.model_usage_label.pack(anchor='w')
+        # Mode toggle buttons
+        mode_buttons_frame = ttk.Frame(mode_frame)
+        mode_buttons_frame.pack(fill=tk.X, pady=(0, 10))
         
-        self.model_context_label = ttk.Label(self.model_details_frame, text="Context size: ", 
-                                           foreground="green", font=('Arial', 9))
-        self.model_context_label.pack(anchor='w')
+        self.chat_button = ttk.Button(mode_buttons_frame, text="💬 Chat", command=self.switch_to_chat_mode)
+        self.chat_button.pack(side=tk.LEFT, padx=(0, 5))
         
-        # Hide model details initially
-        self.model_details_frame.pack_forget()
+        self.translator_button = ttk.Button(mode_buttons_frame, text="🌐 Translator", command=self.switch_to_translator_mode)
+        self.translator_button.pack(side=tk.LEFT)
+        
+        # Fixed space container for translation settings (always visible to maintain layout)
+        translation_container = ttk.Frame(mode_frame)
+        translation_container.pack(fill=tk.X, pady=(0, 10))
+        
+        # Translator settings frame (always visible but may be disabled)
+        self.translator_frame = ttk.LabelFrame(translation_container, text="Translation Settings", padding=10)
+        self.translator_frame.pack(fill=tk.X)  # Always pack, but may be disabled
+        
+        # Source language
+        self.from_label = ttk.Label(self.translator_frame, text="From:")
+        self.from_label.grid(row=0, column=0, sticky='w', padx=(0, 5))
+        self.source_lang_var = tk.StringVar(value="English")
+        self.source_lang_combo = ttk.Combobox(self.translator_frame, textvariable=self.source_lang_var, 
+                                             values=self.get_language_list(), width=12, state="readonly")
+        self.source_lang_combo.grid(row=0, column=1, sticky='w', padx=(0, 5))
+        
+        # Target language
+        self.to_label = ttk.Label(self.translator_frame, text="To:")
+        self.to_label.grid(row=0, column=2, sticky='w', padx=(0, 5))
+        self.target_lang_var = tk.StringVar(value="Spanish")
+        self.target_lang_combo = ttk.Combobox(self.translator_frame, textvariable=self.target_lang_var,
+                                             values=self.get_language_list(), width=12, state="readonly")
+        self.target_lang_combo.grid(row=0, column=3, sticky='w')
+        
+        # Swap languages button
+        self.swap_button = ttk.Button(self.translator_frame, text="⇄", command=self.swap_languages, width=3)
+        self.swap_button.grid(row=1, column=1, columnspan=2, pady=(5, 0))
+        
+        # Auto-detect option
+        self.auto_detect_var = tk.BooleanVar(value=False)
+        self.auto_detect_check = ttk.Checkbutton(self.translator_frame, text="Auto-detect source language", 
+                                               variable=self.auto_detect_var)
+        self.auto_detect_check.grid(row=2, column=0, columnspan=4, sticky='w', pady=(5, 0))
+        
+        # Translation style
+        self.style_label = ttk.Label(self.translator_frame, text="Style:")
+        self.style_label.grid(row=3, column=0, sticky='w', pady=(5, 0), padx=(0, 5))
+        self.translation_style_var = tk.StringVar(value="Natural")
+        self.style_combo = ttk.Combobox(self.translator_frame, textvariable=self.translation_style_var,
+                                      values=["Natural", "Formal", "Casual", "Technical", "Literary"], 
+                                      width=12, state="readonly")
+        self.style_combo.grid(row=3, column=1, columnspan=2, sticky='w', pady=(5, 0))
+        
+        # Configure grid columns to expand properly
+        self.translator_frame.grid_columnconfigure(1, weight=1)
+        self.translator_frame.grid_columnconfigure(3, weight=1)
+        
+        # Store all translation widgets for enable/disable functionality
+        self.translation_widgets = [
+            self.source_lang_combo, self.target_lang_combo, self.swap_button,
+            self.auto_detect_check, self.style_combo
+        ]
         
         # Logs section (in left panel)
         logs_label = ttk.Label(left_frame, text="System Logs:")
@@ -134,11 +198,18 @@ class OllamaGUI:
         self.logs_display.pack(fill=tk.BOTH, expand=True)
         
         # Chat Display (in right panel)
-        chat_label = ttk.Label(right_frame, text="Chat:")
+        self.right_panel_content = ttk.Frame(right_frame)
+        self.right_panel_content.pack(fill=tk.BOTH, expand=True)
+        
+        # Chat Mode Interface
+        self.chat_interface = ttk.Frame(self.right_panel_content)
+        self.chat_interface.pack(fill=tk.BOTH, expand=True)
+        
+        chat_label = ttk.Label(self.chat_interface, text="Chat:")
         chat_label.pack(pady=(0, 5), anchor='w')
         
         # Chat history display (read-only) with enhanced formatting support
-        self.chat_display = scrolledtext.ScrolledText(right_frame, wrap=tk.WORD, font=('Arial', 11), 
+        self.chat_display = scrolledtext.ScrolledText(self.chat_interface, wrap=tk.WORD, font=('Arial', 11), 
                                                     state='disabled', bg='#FFFFFF', fg='#333333',
                                                     selectbackground='#0078D4', selectforeground='white')
         self.chat_display.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
@@ -147,7 +218,7 @@ class OllamaGUI:
         self.setup_chat_formatting()
         
         # User input frame
-        input_frame = ttk.Frame(right_frame)
+        input_frame = ttk.Frame(self.chat_interface)
         input_frame.pack(fill=tk.X, pady=(0, 10))
         
         # User input label
@@ -159,8 +230,8 @@ class OllamaGUI:
         self.user_input.pack(fill=tk.X, pady=(0, 5))
         self.user_input.bind("<KeyPress>", self.on_input_keypress)
 
-        # Send button (in right panel)
-        button_frame = ttk.Frame(right_frame)
+        # Send button (in chat interface)
+        button_frame = ttk.Frame(self.chat_interface)
         button_frame.pack(pady=(0, 5))
         
         self.send_button = ttk.Button(button_frame, text="Send Message", command=self.send_message_from_input, state='disabled')
@@ -173,6 +244,53 @@ class OllamaGUI:
         self.token_counter_label = ttk.Label(button_frame, text="Tokens: 0 / 0", 
                                            font=('Arial', 10, 'bold'), foreground="gray")
         self.token_counter_label.pack(side=tk.RIGHT, padx=(10, 0))
+        
+        # Translator Mode Interface (initially hidden)
+        self.translator_interface = ttk.Frame(self.right_panel_content)
+        
+        translator_title = ttk.Label(self.translator_interface, text="Translation", font=('Arial', 14, 'bold'))
+        translator_title.pack(pady=(0, 10), anchor='w')
+        
+        # Input text frame
+        input_text_frame = ttk.LabelFrame(self.translator_interface, text="Text to Translate", padding=10)
+        input_text_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        
+        self.translation_input = scrolledtext.ScrolledText(input_text_frame, wrap=tk.WORD, font=('Arial', 11), 
+                                                          height=8, bg='#FFFFFF', fg='#333333')
+        self.translation_input.pack(fill=tk.BOTH, expand=True)
+        self.translation_input.bind("<KeyRelease>", self.on_translation_input_change)
+        
+        # Translation buttons frame
+        translate_buttons_frame = ttk.Frame(self.translator_interface)
+        translate_buttons_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        self.translate_button = ttk.Button(translate_buttons_frame, text="🌐 Translate", 
+                                          command=self.translate_text, state='disabled')
+        self.translate_button.pack(side=tk.LEFT, padx=(0, 5))
+        
+        self.clear_translation_button = ttk.Button(translate_buttons_frame, text="🗑️ Clear", 
+                                                  command=self.clear_translation)
+        self.clear_translation_button.pack(side=tk.LEFT, padx=(0, 5))
+        
+        self.copy_translation_button = ttk.Button(translate_buttons_frame, text="📋 Copy Result", 
+                                                 command=self.copy_translation_result, state='disabled')
+        self.copy_translation_button.pack(side=tk.LEFT)
+        
+        # Translation stop button
+        self.translation_stop_button = ttk.Button(translate_buttons_frame, text="Stop", 
+                                                 command=self.stop_generation, state='disabled')
+        self.translation_stop_button.pack(side=tk.LEFT, padx=(5, 0))
+        
+        # Output text frame
+        output_text_frame = ttk.LabelFrame(self.translator_interface, text="Translation Result", padding=10)
+        output_text_frame.pack(fill=tk.BOTH, expand=True)
+        
+        self.translation_output = scrolledtext.ScrolledText(output_text_frame, wrap=tk.WORD, font=('Arial', 11), 
+                                                           height=8, bg='#F8F9FA', fg='#333333', state='disabled')
+        self.translation_output.pack(fill=tk.BOTH, expand=True)
+        
+        # Hide translator interface initially
+        self.translator_interface.pack_forget()
         
         # Attribution text (bottom-right corner of main window)
         attribution_label = ttk.Label(main_frame, 
@@ -226,8 +344,18 @@ class OllamaGUI:
         # Model information cache
         self.model_info_cache = {}  # Cache for model size and info
         
+        # Translation mode variables
+        self.is_translator_mode = False
+        self.translation_in_progress = False
+        
         # Initialize token counter display
         self.update_token_counter()
+        
+        # Set initial mode appearance
+        self.update_mode_buttons()
+        
+        # Set initial translation settings state (disabled in chat mode)
+        self.set_translation_settings_state('disabled')
         
         # Handle window close
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -2401,36 +2529,36 @@ Once installed, click 'Refresh' in the main application to detect models.
 
     def update_model_details(self, model_name, loading=False):
         """Update the model details display with information about the selected model."""
+        
+        # Clear all lines first
+        for line in self.model_detail_lines:
+            line.config(text="", foreground="green")
+        
         if not model_name:
-            # Show notification, hide details
-            self.model_notification.pack(pady=(5, 0), anchor='w')
-            self.model_details_frame.pack_forget()
+            # Show "No model selected" in first line
+            self.model_detail_lines[0].config(text="⚠️ No model selected", foreground="red")
             
             # Disable chat input and send button when no model is selected
             self.user_input.config(state='disabled')
             self.send_button.config(state='disabled')
             return
         
-        # Hide notification, show details
-        self.model_notification.pack_forget()
-        self.model_details_frame.pack(pady=(5, 0), fill=tk.X)
-        
         # Show loading state immediately
         if loading:
             short_name = model_name.split(':')[0] if ':' in model_name else model_name
-            self.model_name_label.config(text=f"Selected model: {short_name}", foreground="green")
-            self.model_size_label.config(text="Model size: Loading...", foreground="#1976D2")
-            self.model_ram_label.config(text="RAM usage: Loading...", foreground="#1976D2")
-            self.model_usage_label.config(text="CPU/GPU usage: Loading...", foreground="#1976D2")
-            self.model_context_label.config(text="Context size: Loading...", foreground="#1976D2")
+            self.model_detail_lines[0].config(text=f"Selected model: {short_name}", foreground="green")
+            self.model_detail_lines[1].config(text="Model size: Loading...", foreground="#1976D2")
+            self.model_detail_lines[2].config(text="RAM usage: Loading...", foreground="#1976D2")
+            self.model_detail_lines[3].config(text="CPU/GPU usage: Loading...", foreground="#1976D2")
+            self.model_detail_lines[4].config(text="Context size: Loading...", foreground="#1976D2")
             return
         
         # Get model information
         model_info = self.get_model_info(model_name)
         
-        # Update labels with actual data
+        # Update all 5 lines with actual data
         short_name = model_name.split(':')[0] if ':' in model_name else model_name
-        self.model_name_label.config(text=f"Selected model: {short_name}", foreground="green")
+        self.model_detail_lines[0].config(text=f"Selected model: {short_name}", foreground="green")
         
         # Set color based on content - blue for loading/unknown, green for actual data
         size_color = "#1976D2" if model_info['size'] in ["Unknown", "Loading...", "Error"] else "green"
@@ -2438,10 +2566,10 @@ Once installed, click 'Refresh' in the main application to detect models.
         usage_color = "#1976D2" if model_info['gpu_cpu_usage'] in ["Unknown", "Loading...", "Error", "0%/0%"] else "green"
         context_color = "#1976D2" if model_info['context'] in ["Unknown", "Loading...", "Error"] else "green"
         
-        self.model_size_label.config(text=f"Model size: {model_info['size']}", foreground=size_color)
-        self.model_ram_label.config(text=f"RAM usage: {model_info['ram_usage']}", foreground=ram_color)
-        self.model_usage_label.config(text=f"CPU/GPU usage: {model_info['gpu_cpu_usage']}", foreground=usage_color)
-        self.model_context_label.config(text=f"Context size: {model_info['context']}", foreground=context_color)
+        self.model_detail_lines[1].config(text=f"Model size: {model_info['size']}", foreground=size_color)
+        self.model_detail_lines[2].config(text=f"RAM usage: {model_info['ram_usage']}", foreground=ram_color)
+        self.model_detail_lines[3].config(text=f"CPU/GPU usage: {model_info['gpu_cpu_usage']}", foreground=usage_color)
+        self.model_detail_lines[4].config(text=f"Context size: {model_info['context']}", foreground=context_color)
         
         # Extract and store max context tokens for token counter
         context_str = model_info['context']
@@ -2555,17 +2683,26 @@ Once installed, click 'Refresh' in the main application to detect models.
                 self.current_request = None
                 self.show_status_message("⏹️ Response generation stopped by user")
                 
-                # Add a message to the chat indicating the stop
-                self.chat_display.config(state='normal')
-                self.chat_display.insert(tk.END, "\n[Response stopped by user]\n\n")
-                self.chat_display.config(state='disabled')
-                self.chat_display.see(tk.END)
+                # Handle stop message based on current mode
+                if self.is_translator_mode:
+                    # For translator mode, just show status message
+                    self.finalize_translation_response()
+                else:
+                    # Add a message to the chat indicating the stop
+                    self.chat_display.config(state='normal')
+                    self.chat_display.insert(tk.END, "\n[Response stopped by user]\n\n")
+                    self.chat_display.config(state='disabled')
+                    self.chat_display.see(tk.END)
+                    self.finalize_chat_response()
                 
             except Exception as e:
                 self.show_status_message(f"Error stopping generation: {str(e)}")
         
-        # Reset state and setup new prompt regardless of whether there was an error
-        self.finalize_chat_response()
+        # Reset state based on current mode
+        if self.is_translator_mode:
+            self.finalize_translation_response()
+        else:
+            self.finalize_chat_response()
 
     def on_input_keypress(self, event):
         """Handle key presses in the user input field."""
@@ -2586,6 +2723,10 @@ Once installed, click 'Refresh' in the main application to detect models.
         """Send message from the user input field."""
         if self.is_downloading:
             self.show_status_message("⚠️ Chat is disabled while downloading model. Please wait for download to complete.")
+            return
+            
+        if self.is_translator_mode:
+            self.show_status_message("⚠️ Chat is disabled in translator mode. Switch to Chat mode to send messages.")
             return
             
         if not self.selected_model:
@@ -2904,6 +3045,12 @@ Once installed, click 'Refresh' in the main application to detect models.
     def on_closing(self):
         """Handle application closing - cleanup processes."""
         try:
+            # Cancel any ongoing generation (chat or translation)
+            if self.is_generating:
+                self.is_generating = False
+                if self.current_request:
+                    self.current_request.close()
+            
             # Cancel any ongoing download
             if self.is_downloading and self.download_process:
                 try:
@@ -3263,6 +3410,300 @@ Once installed, click 'Refresh' in the main application to detect models.
         
         # Focus on dialog
         dialog.focus_set()
+    
+    def get_language_list(self):
+        """Return a list of supported languages for translation."""
+        return [
+            "English", "Spanish", "French", "German", "Italian", "Portuguese", "Russian",
+            "Chinese (Simplified)", "Chinese (Traditional)", "Japanese", "Korean", "Arabic",
+            "Hindi", "Turkish", "Dutch", "Swedish", "Norwegian", "Danish", "Finnish",
+            "Polish", "Czech", "Hungarian", "Romanian", "Bulgarian", "Croatian", "Serbian",
+            "Greek", "Hebrew", "Thai", "Vietnamese", "Indonesian", "Malay", "Filipino",
+            "Ukrainian", "Persian", "Urdu", "Bengali", "Tamil", "Telugu", "Marathi",
+            "Gujarati", "Punjabi", "Nepali", "Sinhala", "Myanmar", "Khmer", "Lao",
+            "Mongolian", "Kazakh", "Uzbek", "Azerbaijani", "Georgian", "Armenian",
+            "Basque", "Catalan", "Galician", "Irish", "Welsh", "Scots Gaelic",
+            "Icelandic", "Estonian", "Latvian", "Lithuanian", "Slovenian", "Slovak",
+            "Macedonian", "Albanian", "Maltese", "Luxembourgish", "Afrikaans",
+            "Swahili", "Zulu", "Xhosa", "Yoruba", "Igbo", "Hausa", "Amharic", "Somali"
+        ]
+    
+    def update_mode_buttons(self):
+        """Update the appearance of mode buttons based on current mode."""
+        if self.is_translator_mode:
+            self.chat_button.config(text="💬 Chat")
+            self.translator_button.config(text="🌐 Translator ✓")
+            self.root.title("Tkinter GUI for Ollama - Translator Mode")
+        else:
+            self.chat_button.config(text="💬 Chat ✓")
+            self.translator_button.config(text="🌐 Translator")
+            self.root.title("Tkinter GUI for Ollama - Chat Mode")
+    
+    def switch_to_chat_mode(self):
+        """Switch to chat mode."""
+        if self.is_translator_mode:
+            self.is_translator_mode = False
+            
+            # Hide translator interface, show chat interface
+            self.translator_interface.pack_forget()
+            self.chat_interface.pack(fill=tk.BOTH, expand=True)
+            
+            # Disable translator settings frame (but keep it visible)
+            self.set_translation_settings_state('disabled')
+            
+            # Update button appearance
+            self.update_mode_buttons()
+            
+            self.show_status_message("Switched to Chat mode")
+    
+    def switch_to_translator_mode(self):
+        """Switch to translator mode."""
+        if not self.selected_model:
+            messagebox.showwarning("No Model Selected", "Please select a model first before using the translator.")
+            return
+            
+        if not self.is_translator_mode:
+            self.is_translator_mode = True
+            
+            # Hide chat interface, show translator interface
+            self.chat_interface.pack_forget()
+            self.translator_interface.pack(fill=tk.BOTH, expand=True)
+            
+            # Enable translator settings frame
+            self.set_translation_settings_state('normal')
+            
+            # Update button appearance
+            self.update_mode_buttons()
+            
+            # Focus on translation input
+            self.translation_input.focus()
+            
+            self.show_status_message("Switched to Translator mode")
+    
+    def set_translation_settings_state(self, state):
+        """Enable or disable all translation settings widgets."""
+        for widget in self.translation_widgets:
+            widget.config(state=state)
+        
+        # Also update the labels to show visual feedback
+        if state == 'disabled':
+            # Make labels appear dimmed in chat mode
+            self.from_label.config(foreground='gray')
+            self.to_label.config(foreground='gray')
+            self.style_label.config(foreground='gray')
+            self.translator_frame.config(text="Translation Settings (Chat Mode)")
+        else:
+            # Restore normal appearance in translator mode
+            self.from_label.config(foreground='black')
+            self.to_label.config(foreground='black')  
+            self.style_label.config(foreground='black')
+            self.translator_frame.config(text="Translation Settings")
+    
+    def swap_languages(self):
+        """Swap source and target languages."""
+        if not self.auto_detect_var.get():  # Only swap if auto-detect is off
+            source = self.source_lang_var.get()
+            target = self.target_lang_var.get()
+            self.source_lang_var.set(target)
+            self.target_lang_var.set(source)
+            self.show_status_message(f"Swapped languages: {target} ⇄ {source}")
+    
+    def on_translation_input_change(self, event=None):
+        """Handle changes in translation input text."""
+        text = self.translation_input.get("1.0", tk.END).strip()
+        if text and self.selected_model:
+            self.translate_button.config(state='normal')
+        else:
+            self.translate_button.config(state='disabled')
+    
+    def clear_translation(self):
+        """Clear both input and output translation areas."""
+        self.translation_input.delete("1.0", tk.END)
+        self.translation_output.config(state='normal')
+        self.translation_output.delete("1.0", tk.END)
+        self.translation_output.config(state='disabled')
+        self.translate_button.config(state='disabled')
+        self.copy_translation_button.config(state='disabled')
+        self.show_status_message("Translation areas cleared")
+    
+    def copy_translation_result(self):
+        """Copy the translation result to clipboard."""
+        result = self.translation_output.get("1.0", tk.END).strip()
+        if result:
+            self.root.clipboard_clear()
+            self.root.clipboard_append(result)
+            self.show_status_message("Translation copied to clipboard")
+        else:
+            self.show_status_message("No translation to copy")
+    
+    def translate_text(self):
+        """Translate the text using the selected model."""
+        if not self.selected_model:
+            messagebox.showwarning("No Model Selected", "Please select a model first.")
+            return
+        
+        if self.is_generating or self.translation_in_progress:
+            self.show_status_message("⚠️ Please wait for current operation to complete")
+            return
+        
+        text_to_translate = self.translation_input.get("1.0", tk.END).strip()
+        if not text_to_translate:
+            self.show_status_message("⚠️ Please enter text to translate")
+            return
+        
+        # Get language settings
+        source_lang = "auto-detect" if self.auto_detect_var.get() else self.source_lang_var.get()
+        target_lang = self.target_lang_var.get()
+        translation_style = self.translation_style_var.get().lower()
+        
+        # Create translation prompt based on your suggestion
+        if self.auto_detect_var.get():
+            prompt = f"Please translate the following text into {target_lang} in a {translation_style} style, without any explanation or additional text. Only provide the translation:\n\n{text_to_translate}"
+        else:
+            prompt = f"Please translate from {source_lang} into {target_lang} the following text in a {translation_style} style, without any explanation or additional text. Only provide the translation:\n\n{text_to_translate}"
+        
+        # Update UI state
+        self.translation_in_progress = True
+        self.is_generating = True
+        self.translate_button.config(state='disabled')
+        self.translation_stop_button.config(state='normal')
+        
+        # Clear previous result
+        self.translation_output.config(state='normal')
+        self.translation_output.delete("1.0", tk.END)
+        self.translation_output.config(state='disabled')
+        
+        # Reset response accumulator
+        self.current_response = ""
+        
+        self.show_status_message(f"Translating from {source_lang} to {target_lang}...")
+        
+        def run_translation():
+            self.run_translation_query(self.selected_model, prompt)
+        
+        threading.Thread(target=run_translation, daemon=True).start()
+    
+    def run_translation_query(self, model, prompt):
+        """Run translation query and update translator interface."""
+        if not self.ollama_path:
+            self.root.after(0, lambda: self.update_translation_output("Error: Ollama not found\n"))
+            self.root.after(0, self.finalize_translation_response)
+            return
+
+        try:
+            timeout = int(self.response_timeout_var.get())
+        except ValueError:
+            timeout = 60
+
+        def query():
+            try:
+                url = "http://localhost:11434/api/generate"
+                payload = {
+                    "model": model,
+                    "prompt": prompt,
+                    "stream": True,
+                    "options": {}
+                }
+                
+                # Add model parameters to the payload (same as chat)
+                if self.temperature_var.get() != 0.7:
+                    payload["options"]["temperature"] = self.temperature_var.get()
+                
+                if self.top_p_var.get() != 0.9:
+                    payload["options"]["top_p"] = self.top_p_var.get()
+                
+                if self.top_k_var.get() != 40:
+                    payload["options"]["top_k"] = self.top_k_var.get()
+                
+                if self.repeat_penalty_var.get() != 1.1:
+                    payload["options"]["repeat_penalty"] = self.repeat_penalty_var.get()
+                
+                if self.max_tokens_var.get() > 0:
+                    payload["options"]["num_predict"] = self.max_tokens_var.get()
+                
+                if self.seed_var.get() >= 0:
+                    payload["options"]["seed"] = self.seed_var.get()
+                
+                # Remove options key if empty
+                if not payload["options"]:
+                    del payload["options"]
+                
+                # Store the request for potential cancellation
+                self.current_request = requests.post(url, json=payload, stream=True, timeout=timeout)
+                
+                with self.current_request as response:
+                    response.raise_for_status()
+                    for line in response.iter_lines():
+                        if line:
+                            try:
+                                data = json.loads(line)
+                                if 'response' in data:
+                                    chunk = data['response']
+                                    if chunk:
+                                        self.current_response += chunk
+                                        self.root.after(0, lambda c=chunk: self.update_translation_output(c))
+                                
+                                if data.get('done', False):
+                                    break
+                            except json.JSONDecodeError:
+                                continue
+                
+                self.root.after(0, self.finalize_translation_response)
+            except requests.exceptions.Timeout:
+                self.root.after(0, lambda: self.update_translation_output("\nError: Request timed out.\n"))
+                self.root.after(0, self.finalize_translation_response)
+            except requests.exceptions.RequestException as e:
+                if not self.is_generating:
+                    return  # User stopped the generation
+                self.root.after(0, lambda: self.update_translation_output(f"\nError: {str(e)}\n"))
+                self.root.after(0, self.finalize_translation_response)
+            except Exception as e:
+                if not self.is_generating:
+                    return  # User stopped the generation
+                self.root.after(0, lambda: self.update_translation_output(f"\nAn unexpected error occurred: {str(e)}\n"))
+                self.root.after(0, self.finalize_translation_response)
+            finally:
+                self.current_request = None
+
+        threading.Thread(target=query, daemon=True).start()
+    
+    def update_translation_output(self, chunk):
+        """Update the translation output with a chunk of text."""
+        self.translation_output.config(state='normal')
+        self.translation_output.insert(tk.END, chunk)
+        self.translation_output.config(state='disabled')
+        self.translation_output.see(tk.END)
+    
+    def finalize_translation_response(self):
+        """Finalize the translation response and reset UI state."""
+        # Apply thinking filter if needed
+        if not self.show_thinking_var.get() and self.current_response:
+            filtered_response = self.filter_thinking_tags(self.current_response)
+            
+            # Update the output with filtered response
+            self.translation_output.config(state='normal')
+            self.translation_output.delete("1.0", tk.END)
+            self.translation_output.insert("1.0", filtered_response.strip())
+            self.translation_output.config(state='disabled')
+        
+        # Reset UI state
+        self.translation_in_progress = False
+        self.is_generating = False
+        self.current_request = None
+        self.translate_button.config(state='normal')
+        self.translation_stop_button.config(state='disabled')
+        
+        # Enable copy button if there's content
+        result = self.translation_output.get("1.0", tk.END).strip()
+        if result:
+            self.copy_translation_button.config(state='normal')
+            self.show_status_message("✅ Translation completed")
+        else:
+            self.copy_translation_button.config(state='disabled')
+            self.show_status_message("⚠️ Translation completed but no result")
+        
+        # Focus back on input for next translation
+        self.translation_input.focus()
     
 if __name__ == "__main__":
     import re
