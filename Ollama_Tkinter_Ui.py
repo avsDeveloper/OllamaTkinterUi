@@ -130,9 +130,22 @@ class OllamaGUI:
         chat_label = ttk.Label(right_frame, text="Chat:")
         chat_label.pack(pady=(0, 5), anchor='w')
         
-        self.chat_display = scrolledtext.ScrolledText(right_frame, wrap=tk.WORD, font=('Arial', 11))
+        # Chat history display (read-only)
+        self.chat_display = scrolledtext.ScrolledText(right_frame, wrap=tk.WORD, font=('Arial', 11), state='disabled')
         self.chat_display.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
-        self.chat_display.bind("<KeyPress>", self.on_chat_keypress)
+        
+        # User input frame
+        input_frame = ttk.Frame(right_frame)
+        input_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        # User input label
+        input_label = ttk.Label(input_frame, text="Your message:")
+        input_label.pack(anchor='w', pady=(0, 5))
+        
+        # User input entry
+        self.user_input = tk.Text(input_frame, height=3, font=('Arial', 11), wrap=tk.WORD, state='disabled')
+        self.user_input.pack(fill=tk.X, pady=(0, 5))
+        self.user_input.bind("<KeyPress>", self.on_input_keypress)
         
         # Model Response Timeout Configuration
         response_timeout_frame = ttk.Frame(left_frame)
@@ -162,7 +175,7 @@ class OllamaGUI:
         button_frame = ttk.Frame(right_frame)
         button_frame.pack(pady=(0, 5))
         
-        self.send_button = ttk.Button(button_frame, text="Send Message", command=self.send_message_from_chat)
+        self.send_button = ttk.Button(button_frame, text="Send Message", command=self.send_message_from_input, state='disabled')
         self.send_button.pack(side=tk.LEFT, padx=(0, 5))
         
         self.stop_button = ttk.Button(button_frame, text="Stop", command=self.stop_generation, state='disabled')
@@ -1451,6 +1464,12 @@ Once installed, click 'Refresh' in the main application to detect models.
             if hasattr(self, 'download_button'):
                 self.download_button.config(text="Cancel Download", command=self.start_download_action)
             
+            # Disable chat input during download
+            if hasattr(self, 'user_input'):
+                self.user_input.config(state='disabled')
+            if hasattr(self, 'send_button'):
+                self.send_button.config(state='disabled')
+            
             # Show progress UI
             progress_frame.pack(fill=tk.X, pady=(10, 0))
             progress_text.config(text="Initializing download...")
@@ -1629,6 +1648,19 @@ Once installed, click 'Refresh' in the main application to detect models.
                 self.download_status_label.config(text="")
             if hasattr(self, 'download_button'):
                 self.download_button.config(text="Download", command=self.start_download_action)
+            
+            # Re-enable chat input if a model is selected
+            if hasattr(self, 'selected_model') and self.selected_model:
+                if hasattr(self, 'user_input'):
+                    self.user_input.config(state='normal')
+                if hasattr(self, 'send_button'):
+                    self.send_button.config(state='normal')
+            else:
+                # Keep disabled if no model selected
+                if hasattr(self, 'user_input'):
+                    self.user_input.config(state='disabled')
+                if hasattr(self, 'send_button'):
+                    self.send_button.config(state='disabled')
         
         def download_complete(model_name):
             """Handle successful download completion."""
@@ -1815,6 +1847,15 @@ Once installed, click 'Refresh' in the main application to detect models.
         if hasattr(self, 'download_status_label'):
             self.download_status_label.config(text="")
         
+        # Re-enable chat input if a model is selected
+        if self.selected_model:
+            self.user_input.config(state='normal')
+            self.send_button.config(state='normal')
+        else:
+            # Keep disabled if no model selected
+            self.user_input.config(state='disabled')
+            self.send_button.config(state='disabled')
+        
         # If there's an active download dialog, trigger its cancel function
         if hasattr(self, '_active_download_dialog'):
             try:
@@ -1898,7 +1939,15 @@ Once installed, click 'Refresh' in the main application to detect models.
         # Reset UI elements
         self.download_status_label.config(text="")
         self.download_button.config(text="Download", command=self.start_download_action)
-        self.send_button.config(state='normal')  # Re-enable chat
+        
+        # Re-enable chat only if a model is selected
+        if self.selected_model:
+            self.send_button.config(state='normal')
+            self.user_input.config(state='normal')
+        else:
+            self.send_button.config(state='disabled')
+            self.user_input.config(state='disabled')
+            
         self.stop_button.config(state='disabled')  # Keep stop disabled when not generating
 
     def auto_start_server(self):
@@ -2240,6 +2289,10 @@ Once installed, click 'Refresh' in the main application to detect models.
             # Show notification, hide details
             self.model_notification.pack(pady=(5, 0), anchor='w')
             self.model_details_frame.pack_forget()
+            
+            # Disable chat input and send button when no model is selected
+            self.user_input.config(state='disabled')
+            self.send_button.config(state='disabled')
             return
         
         # Hide notification, show details
@@ -2340,10 +2393,20 @@ Once installed, click 'Refresh' in the main application to detect models.
         # Show loading state immediately
         self.update_model_details(selected, loading=True)
         
+        # Clear chat display and show welcome message
+        self.chat_display.config(state='normal')
         self.chat_display.delete(1.0, tk.END)
         self.chat_display.insert(tk.END, f"✅ Model '{selected}' is ready for chat!\n")
-        self.chat_display.insert(tk.END, "📝 Type your message after the >>> prompt and press Enter or click Send.\n\n")
-        self.setup_user_input_prompt()
+        self.chat_display.insert(tk.END, "� Type your message in the input field below and press Enter or click Send.\n\n")
+        self.chat_display.config(state='disabled')
+        
+        # Clear input field and enable it
+        self.user_input.config(state='normal')
+        self.user_input.delete("1.0", tk.END)
+        self.user_input.focus()
+        
+        # Enable send button
+        self.send_button.config(state='normal')
         
         # Pre-load the model and update details in background
         self.show_status_message(f"Loading model '{selected}'...")
@@ -2357,12 +2420,6 @@ Once installed, click 'Refresh' in the main application to detect models.
             self.preload_model(selected)
         
         threading.Thread(target=load_model_info, daemon=True).start()
-
-    def setup_user_input_prompt(self):
-        """Set up a new user input prompt in the chat."""
-        self.chat_display.insert(tk.END, ">>> ")
-        self.chat_display.focus()
-        self.chat_display.see(tk.END)
 
     def stop_generation(self):
         """Stop the current model response generation."""
@@ -2379,7 +2436,10 @@ Once installed, click 'Refresh' in the main application to detect models.
                 self.show_status_message("⏹️ Response generation stopped by user")
                 
                 # Add a message to the chat indicating the stop
-                self.chat_display.insert(tk.END, "\n[Response stopped by user]")
+                self.chat_display.config(state='normal')
+                self.chat_display.insert(tk.END, "\n[Response stopped by user]\n\n")
+                self.chat_display.config(state='disabled')
+                self.chat_display.see(tk.END)
                 
             except Exception as e:
                 self.show_status_message(f"Error stopping generation: {str(e)}")
@@ -2387,19 +2447,23 @@ Once installed, click 'Refresh' in the main application to detect models.
         # Reset state and setup new prompt regardless of whether there was an error
         self.finalize_chat_response()
 
-    def on_chat_keypress(self, event):
-        """Handle key presses in the chat display."""
-        # Handle Enter key - send message
-        if event.keysym == "Return":
+    def on_input_keypress(self, event):
+        """Handle key presses in the user input field."""
+        # Don't process key events if input is disabled
+        if str(self.user_input.cget('state')) == 'disabled':
+            return "break"
+            
+        # Handle Enter key - send message (Ctrl+Enter for new line)
+        if event.keysym == "Return" and not event.state & 0x4:  # 0x4 is Ctrl key
             # Prevent default newline insertion and send message
-            self.send_message_from_chat()
+            self.send_message_from_input()
             return "break"
         
         # Allow normal text editing
         return None
 
-    def send_message_from_chat(self):
-        """Send message from chat input area."""
+    def send_message_from_input(self):
+        """Send message from the user input field."""
         if self.is_downloading:
             self.show_status_message("⚠️ Chat is disabled while downloading model. Please wait for download to complete.")
             return
@@ -2408,22 +2472,27 @@ Once installed, click 'Refresh' in the main application to detect models.
             self.show_status_message("⚠️ Please choose a model first using the 'Choose Model' button.")
             return
         
-        # Get user input from the current line
+        # Check if input field is disabled (shouldn't happen with proper UI state management)
+        if str(self.user_input.cget('state')) == 'disabled':
+            self.show_status_message("⚠️ Chat input is currently disabled. Please select a model.")
+            return
+        
+        # Get user input from the input field
         try:
-            # Get all text from the chat display
-            all_text = self.chat_display.get("1.0", tk.END)
-            lines = all_text.split('\n')
-            
-            # Find the last line that starts with ">>> "
-            user_text = ""
-            for line in reversed(lines):
-                if line.startswith(">>> "):
-                    user_text = line[4:].strip()  # Remove ">>> " prefix
-                    break
+            user_text = self.user_input.get("1.0", tk.END).strip()
             
             if not user_text:
-                self.show_status_message("⚠️ Please type a message after the >>> prompt")
+                self.show_status_message("⚠️ Please type a message")
                 return
+            
+            # Add user message to chat display
+            self.chat_display.config(state='normal')
+            self.chat_display.insert(tk.END, f"You: {user_text}\n\n")
+            self.chat_display.config(state='disabled')
+            self.chat_display.see(tk.END)
+            
+            # Clear the input field
+            self.user_input.delete("1.0", tk.END)
             
             # Add user message to conversation history for token tracking
             self.add_to_conversation_history("user", user_text)
@@ -2433,8 +2502,10 @@ Once installed, click 'Refresh' in the main application to detect models.
             self.stop_button.config(state='normal')
             self.is_generating = True
             
-            # Add newline after user input and show AI response prompt
-            self.chat_display.insert(tk.END, f"\n\nAI: ")
+            # Add AI response prompt to chat display
+            self.chat_display.config(state='normal')
+            self.chat_display.insert(tk.END, "AI: ")
+            self.chat_display.config(state='disabled')
             self.chat_display.see(tk.END)
             
             # Reset response accumulator
@@ -2446,9 +2517,8 @@ Once installed, click 'Refresh' in the main application to detect models.
             threading.Thread(target=run_query, daemon=True).start()
             
         except Exception as e:
-            # If there's an error, just set up a new prompt
             self.show_status_message(f"Error sending message: {str(e)}")
-            self.setup_user_input_prompt()
+            # Re-enable send button if there's an error
             self.send_button.config(state='normal')
             self.stop_button.config(state='disabled')
             self.is_generating = False
@@ -2519,8 +2589,9 @@ Once installed, click 'Refresh' in the main application to detect models.
     def run_ollama_query(self, model, prompt):
         """Query Ollama and update GUI with response."""
         if not self.ollama_path:
+            self.root.after(0, lambda: self.chat_display.config(state='normal'))
             self.root.after(0, lambda: self.chat_display.insert(tk.END, "Error: Ollama not found\n\n"))
-            self.root.after(0, self.setup_user_input_prompt)
+            self.root.after(0, lambda: self.chat_display.config(state='disabled'))
             self.root.after(0, lambda: self.send_button.config(state='normal'))
             self.root.after(0, lambda: self.stop_button.config(state='disabled'))
             self.root.after(0, lambda: setattr(self, 'is_generating', False))
@@ -2607,6 +2678,7 @@ Once installed, click 'Refresh' in the main application to detect models.
                 filtered_response = self.filter_thinking_tags(self.current_response)
                 
                 # Clear the AI response area and re-insert the filtered content
+                self.chat_display.config(state='normal')
                 content = self.chat_display.get("1.0", tk.END)
                 lines = content.split('\n')
                 
@@ -2625,20 +2697,24 @@ Once installed, click 'Refresh' in the main application to detect models.
                     self.chat_display.delete(ai_content_start, tk.END)
                     self.chat_display.insert(ai_content_start, filtered_response)
                     self.chat_display.see(tk.END)
+                self.chat_display.config(state='disabled')
                 return
         
         # Normal case: either thinking is enabled or no thinking tags in chunk
+        self.chat_display.config(state='normal')
         self.chat_display.insert(tk.END, chunk)
+        self.chat_display.config(state='disabled')
         self.chat_display.see(tk.END)
 
     def finalize_chat_response(self):
-        """Finalize the chat response by adding newlines and setting up the next prompt."""
+        """Finalize the chat response by adding newlines and resetting input."""
         # Apply final filtering if thinking is disabled
         if not self.show_thinking_var.get() and self.current_response:
             filtered_response = self.filter_thinking_tags(self.current_response)
             
             # If the filtered response is different, update the display
             if filtered_response != self.current_response:
+                self.chat_display.config(state='normal')
                 content = self.chat_display.get("1.0", tk.END)
                 lines = content.split('\n')
                 
@@ -2655,9 +2731,16 @@ Once installed, click 'Refresh' in the main application to detect models.
                     # Delete everything after "AI: " and insert filtered response
                     self.chat_display.delete(ai_content_start, tk.END)
                     self.chat_display.insert(ai_content_start, filtered_response)
+                self.chat_display.config(state='disabled')
         
+        # Add final newlines and focus on input
+        self.chat_display.config(state='normal')
         self.chat_display.insert(tk.END, "\n\n")
-        self.setup_user_input_prompt()
+        self.chat_display.config(state='disabled')
+        self.chat_display.see(tk.END)
+        
+        # Focus on the input field for next message
+        self.user_input.focus()
         
         # Add AI response to conversation history for token tracking
         if self.current_response:
