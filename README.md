@@ -1,6 +1,6 @@
 # Tkinter GUI for Ollama
 
-A Python-based graphical user interface for [Ollama](https://ollama.ai), providing AI chat functionality with features including translation mode, model download dialogs, system compatibility checking, real-time token tracking, response control, server management, and configurable model parameters.
+A Python-based graphical user interface for [Ollama](https://ollama.ai), providing AI chat functionality with comprehensive model management, professional translation mode, modern keyboard shortcuts (Ctrl+Enter), system compatibility checking, real-time token tracking, response control, server management, and configurable model parameters.
 
 **Proudly powered by [Ollama](https://ollama.ai)** 🚀
 
@@ -13,31 +13,26 @@ A Python-based graphical user interface for [Ollama](https://ollama.ai), providi
 
 ## 🚀 Overview
 
-This is a GUI wrapper for Ollama that provides useful featur### � **Version 3.0 - Translation System**
-- **Translation Mode** - Dedicated translation interface with 70+ language support
-- **Auto-Language Detection** - Automatic detection of source languages
-- **Translation Styles** - Natural, Formal, Casual, Technical, and Literary translation options
-- **Quick Language Swapping** - One-click swap between source and target languages
-- **Real-time Translation** - Streaming translation results with live output
-- **Always-Visible Settings** - Translation controls remain visible but inactive in Chat mode for stable layout
+## 🚀 Overview
 
-### ⚙️ **Model Parameter Control**maintaining ease of use:
+This is a GUI wrapper for Ollama that provides useful features while maintaining ease of use:
 
 ### 🎯 **Core Capabilities**
 - **Dual-Mode Interface** - Chat and Translation modes with seamless switching
 - **Server Management** - Automatic start/stop with user context detection
-- **Model Downloads** - Download dialog with system compatibility analysis
+- **Comprehensive Model Management** - Download and delete models with compatibility analysis
+- **Modern Keyboard Shortcuts** - Ctrl+Enter for actions, Enter for new lines
 - **Translation System** - 70+ languages with auto-detect and style options
 - **Chat Interface** - Real-time token tracking with context management
 - **Configurable Model Parameters** - Control over temperature, top-p, top-k, and more
-- **Download System** - Progress tracking, background downloads, auto-cancellation
+- **Background Operations** - Progress tracking, background downloads, auto-cancellation
 - **System Compatibility Analysis** - Real-time GPU/CPU/RAM assessment for model requirements
 - **Response Control** - Stop generation, configurable timeouts, <think> tag filtering
 - **Resource Monitoring** - Live system usage, model performance metrics
 - **Status Management** - Logging with intelligent filtering
 
 ### 🏆 **What Makes This Special**
-Perfect for users who need AI tools with features like translation capabilities, system compatibility checking, background download management, real-time resource monitoring, configurable model parameters, and conversation management, all wrapped in an intuitive desktop interface.
+Perfect for users who need AI tools with features like translation capabilities, comprehensive model management, modern UX patterns, system compatibility checking, background operation management, real-time resource monitoring, configurable model parameters, and conversation management, all wrapped in an intuitive desktop interface.
 
 ## ✨ Features
 
@@ -95,17 +90,19 @@ Perfect for users who need AI tools with features like translation capabilities,
 - **Copy-to-Clipboard** - Easy copying of installation commands
 - **Formatting** - 700x600 scrollable window with syntax highlighting
 
-### 🎯 **Download System**
-- **Download Dialog** - 700x650 modal with features
-- **Model Discovery** - Auto-loads available models from multiple Ollama sources
-- **Size Selection** - Dynamic size dropdown with auto-detection for each model
-- **Manual Entry Support** - Direct model name input for any Ollama-compatible model
-- **Already Downloaded Detection** - Prevents duplicate downloads with checking
-- **Model Information Display** - Shows capabilities, download stats, descriptions
-- **Real-time Progress Tracking** - Live download progress with percentage and status
-- **Background Download Support** - Dialog auto-closes while downloads continue
-- **Download Cancellation** - Both dialog and main window cancellation options
-- **Error Handling** - Error recovery and user feedback
+### 🎯 **Model Management System**
+- **Comprehensive Model Management** - Download new models and delete existing ones from a unified interface
+- **Professional Dialog Interface** - 700x650 tabbed dialog with "Download Models" and "Manage Installed" tabs
+- **Model Discovery** - Auto-loads available models from Ollama registry with metadata
+- **Size Selection** - Dynamic dropdown with model-specific size options
+- **Manual Entry** - Direct input support for any Ollama-compatible model
+- **System Compatibility Analysis** - Real-time GPU/CPU/RAM assessment with color coding
+- **Model Information Display** - Capabilities, statistics, and system requirements
+- **Progress Tracking** - Live download progress with percentage and status
+- **Background Operations** - Downloads continue when dialog is closed
+- **Model Deletion** - Safe model removal with confirmation dialogs
+- **Installed Models List** - View all installed models with details
+- **Error Recovery** - Comprehensive error handling and recovery
 
 ### 🔬 **System Compatibility Analysis**
 - **Hardware Detection** - Automatic GPU VRAM and system RAM detection
@@ -278,7 +275,7 @@ Perfect for users who need AI tools with features like translation capabilities,
    - Wait for model info to load (shows resource usage and context window)
    - Notice the token counter in bottom-right showing "Tokens: 0 / [limit]"
    - Type your message in the input field
-   - Press **Enter** or click **Send** to chat
+   - Press **Ctrl+Enter** to send (or **Enter** for new line)
    - Watch token usage update in real-time
    - Use **Stop** button to cancel responses if needed
 
@@ -298,27 +295,32 @@ python3 Ollama_Tkinter_Ui.py
 - **Server Restart**: Click "Restart Ollama" to restart in user context if needed
 - **Real-time Updates**: Status changes automatically detected and displayed
 
-### **Model Download System**
+### **Model Management System**
 
-#### **Using the Download Dialog**
-1. **Open Download Dialog**: Click **"Download"** button next to model dropdown
-2. **Model Selection Options**:
+#### **Using the Manage Models Dialog**
+1. **Open Manage Models Dialog**: Click **"Manage Models"** button next to model dropdown
+2. **Download Models Tab**:
    - **From Available Models**: Select from auto-loaded model list with metadata
    - **Manual Entry**: Type any model name (e.g., `llama3.2`, `qwen2.5:7b`, `phi3`)
-3. **Size Selection**: Choose from dynamically loaded size options for selected model
-4. **System Compatibility Analysis**: View real-time compatibility for:
-   - **🟢 GPU Only** - Recommended for best performance
-   - **🟠 CPU Only** - Available but slower for large models
-   - **✅ GPU + CPU** - Optimal performance and reliability
-5. **Model Information**: View detailed information including:
-   - Model capabilities (🔧 Function calling, 👁️ Image analysis, 📄 Embeddings, 🧠 Chain of thought)
-   - Download statistics and popularity
-   - System requirements and performance estimates
-6. **Download Execution**:
-   - Real-time progress tracking with percentage and status
-   - Dialog auto-closes after 1 second while download continues in background
-   - Cancel from dialog or main window at any time
-   - Download status shown in main window status bar
+   - **Size Selection**: Choose from dynamically loaded size options for selected model
+   - **System Compatibility Analysis**: View real-time compatibility for:
+     - **🟢 GPU Only** - Recommended for best performance
+     - **🟠 CPU Only** - Available but slower for large models
+     - **✅ GPU + CPU** - Optimal performance and reliability
+   - **Model Information**: View detailed information including:
+     - Model capabilities (🔧 Function calling, 👁️ Image analysis, 📄 Embeddings, 🧠 Chain of thought)
+     - Download statistics and popularity
+     - System requirements and performance estimates
+   - **Download Execution**:
+     - Real-time progress tracking with percentage and status
+     - Dialog auto-closes after 1 second while download continues in background
+     - Cancel from dialog or main window at any time
+     - Download status shown in main window status bar
+3. **Manage Installed Tab**:
+   - **View Installed Models**: Browse all models currently installed on your system
+   - **Model Details**: View comprehensive information about each installed model
+   - **Safe Model Deletion**: Select models and delete with confirmation dialogs
+   - **Refresh Functionality**: Update the installed models list as needed
 
 #### **System Compatibility Assessment**
 The download dialog provides compatibility analysis:
@@ -378,7 +380,7 @@ The download dialog provides compatibility analysis:
 1. **Input Text**: Enter text to translate in the "Text to Translate" section
 2. **Configure Languages**: Set source and target languages (or enable auto-detect)
 3. **Select Style**: Choose appropriate translation style for your needs
-4. **Start Translation**: Click **🌐 Translate** button or use keyboard shortcut
+4. **Start Translation**: Press **Ctrl+Enter** to translate (or **Enter** for new lines in text)
 5. **Real-time Results**: Watch translation appear in real-time in the "Translation Result" section
 6. **Result Management**:
    - **📋 Copy Result** - Copy translation to clipboard
@@ -405,7 +407,7 @@ The download dialog provides compatibility analysis:
    - Toggle "Show model reasoning" for <think> tags visibility
 4. **Interactive Chat**:
    - Type message in input field
-   - Press **Enter** or click **"Send"** to chat
+   - Press **Ctrl+Enter** to send (or **Enter** for new lines)
    - Monitor real-time token usage in bottom-right
    - Use **"Stop"** button to cancel responses if needed
 5. **Additional Features**:
@@ -479,22 +481,22 @@ The left panel provides comprehensive system insights:
 ### **Professional Model Management**
 - **Smart Refresh**: Updates model list from Ollama installation with auto-selection
 - **Intelligent Selection**: Loads selected model with automatic conversation reset
-- **Professional Downloads**: Advanced dialog with system compatibility analysis
+- **Comprehensive Management**: Advanced tabbed dialog with download, deletion, and compatibility analysis
 - **Server Context Management**: Restart Ollama in user context for optimal access
 - **Model Preloading**: Automatic model preparation for faster initial responses
 - **Resource Monitoring**: Live model performance and memory usage tracking
 
 ### **Expert Chat Interface**
-- **Message Input**: Professional input field at bottom with Enter key support
-- **Send Options**: Press **Enter** or click **"Send Message"** button
+- **Modern Keyboard Shortcuts**: Ctrl+Enter to send, Enter for new lines (Discord/Slack-style)
+- **Professional Message Input**: Optimized text input with proper line handling
 - **Instant Stop**: Click **"Stop"** button to cancel ongoing responses immediately
 - **Advanced Token Tracking**: Real-time monitoring with conversation history
 - **Response Control**: Configure timeout and thinking tag visibility
 - **Auto-formatting**: Professional message display with proper structure
 - **Context Management**: Automatic handling of conversation limits and resets
 
-### **Download Dialog Features**
-- **Modal Dialog**: Professional 700x650 interface with comprehensive controls
+### **Model Management Dialog Features**
+- **Professional Tabbed Interface**: 700x650 dialog with "Download Models" and "Manage Installed" tabs
 - **Model Discovery**: Auto-loads from multiple Ollama sources with metadata
 - **Size Selection**: Dynamic dropdown with model-specific size options
 - **Manual Entry**: Direct input support for any Ollama-compatible model
@@ -502,6 +504,8 @@ The left panel provides comprehensive system insights:
 - **Information Display**: Model capabilities, statistics, and system requirements
 - **Progress Tracking**: Live download progress with percentage and status
 - **Background Downloads**: Dialog auto-closes while downloads continue
+- **Model Deletion**: Safe removal of installed models with confirmation dialogs
+- **Installed Models View**: Comprehensive listing of all local models with details
 - **Dual Cancellation**: Cancel from dialog or main window
 - **Error Recovery**: Comprehensive error handling and recovery
 
@@ -533,17 +537,20 @@ The left panel shows comprehensive system insights:
 - **Debug Information**: Process detection and server management details
 - **Real-time Updates**: All status information updates automatically
 
-### **Enterprise Download Management**
-- **Main Window Integration**: Download button transforms to "Cancel Download" during active downloads
+### **Enterprise Model Management**
+- **Unified Interface**: Single "Manage Models" button handles both downloads and deletions
+- **Main Window Integration**: Button transforms to "Cancel Download" during active downloads
 - **Background Processing**: Downloads continue when dialog is closed for uninterrupted workflow
 - **Status Persistence**: Live download progress displayed in main window status bar
 - **Dual Control System**: Cancel downloads from either dialog or main window
+- **Safe Model Deletion**: Confirmation dialogs prevent accidental model removal
 - **Auto-completion**: Models automatically refresh and newly downloaded model selected
 - **Error Recovery**: Robust handling of network issues, interruptions, and system changes
 - **Progress Indicators**: Real-time percentage, status messages, and visual feedback
 
 ### **Keyboard Shortcuts & Accessibility**
-- **Enter Key**: Send messages instantly from chat input
+- **Modern Input Controls**: Ctrl+Enter to send messages/translations, Enter for new lines
+- **Discord/Slack-style UX**: Familiar keyboard shortcuts for improved user experience
 - **Escape Key**: Cancel dialogs and operations
 - **Tab Navigation**: Navigate through interface elements
 - **Accessible UI**: Color-coded status with text descriptions for all visual indicators
@@ -572,16 +579,21 @@ The left panel shows comprehensive system insights:
 - **Model visibility**: 🟠 "Started by system" indicates limited access - click restart
 - **Status monitoring**: Check real-time server status indicator above model dropdown
 
-#### **Download Problems**
-- **Dialog not opening**: Ensure not already downloading (check main window button text)
+#### **Model Management Problems**
+- **Dialog not opening**: Ensure not already downloading (check main window button text - should show "Manage Models")
 - **Models not loading**: Check internet connection and Ollama registry access
 - **Size options missing**: Some models may only have default sizes available
 - **Compatibility warnings**: Red indicators show insufficient system resources
 - **Download failures**: Check available disk space and network connectivity
 - **Stuck downloads**: Use Cancel Download button in main window or dialog
+- **Model deletion issues**: 
+  - Ensure model is not currently in use
+  - Check that Ollama server is running properly
+  - Try refreshing the installed models list
+  - Verify you have proper permissions to delete models
 
 #### **Model and Chat Issues**
-- **No models available**: Download models using **Download** button or manually with `ollama pull llama3`
+- **No models available**: Download models using **Manage Models** button or manually with `ollama pull llama3`
 - **Model loading fails**: Click **Refresh** to update model list
 - **Chat not responding**: 
   - Ensure model is selected and loaded (check model info display)
@@ -716,11 +728,13 @@ This GUI is built with enterprise-grade architecture:
 - **Professional Chat Interface** - Streaming responses with <think> tag filtering
 - **Background Operation Manager** - Thread-safe operations with UI protection
 
-#### **Advanced Download System**
-- **Professional Modal Dialog** - 700x650 comprehensive download interface
+#### **Advanced Model Management System**
+- **Professional Tabbed Dialog** - 700x650 comprehensive interface with download and deletion capabilities
 - **Model Discovery Engine** - Multi-source model fetching with metadata caching
 - **System Compatibility Checker** - Hardware analysis with 8 model size categories
 - **Background Download Manager** - Protected UI updates with dialog state management
+- **Model Deletion Engine** - Safe model removal with confirmation dialogs and error handling
+- **Installed Models Browser** - Comprehensive view of local models with detailed information
 - **Progress Tracking System** - Real-time progress parsing with cancellation support
 - **Error Recovery Framework** - Robust error handling with graceful degradation
 
@@ -753,13 +767,13 @@ OllamaTkinterUi/
 │   ├── OllamaGUI Class     # Main application controller with dual-mode support
 │   ├── Translation System  # Professional translation with 70+ languages
 │   ├── Parameter Control   # Advanced model configuration system
-│   ├── Download Dialog     # Professional download system
+│   ├── Model Management    # Comprehensive download and deletion system
 │   ├── Compatibility       # System analysis engine
 │   ├── Token Management    # Conversation tracking
 │   ├── Server Management   # Ollama server control
-│   ├── Chat Interface      # Interactive AI chat
+│   ├── Chat Interface      # Interactive AI chat with modern keyboard shortcuts
 │   └── Installation Guide # Built-in help system
-├── README.md               # Comprehensive documentation (880+ lines)
+├── README.md               # Comprehensive documentation (950+ lines)
 ├── LICENSE                 # MIT License
 └── screenshots/            # Application screenshots
 ```
@@ -827,6 +841,21 @@ OllamaTkinterUi/
 - **Real-time Translation** - Streaming translation results with live output
 - **Always-Visible Settings** - Translation controls remain visible but inactive in Chat mode for stable layout
 
+### 🎯 **Version 4.0 - Comprehensive Model Management System**
+- **Manage Models Interface** - Unified system for both downloading and deleting models
+- **Tabbed Dialog Design** - Professional interface with "Download Models" and "Manage Installed" tabs
+- **Safe Model Deletion** - Remove unwanted models with confirmation dialogs and error handling
+- **Installed Models Browser** - View all local models with detailed information
+- **Integrated Management** - Single button access to complete model lifecycle management
+- **Background Operation Support** - Continue using app while models are being managed
+
+### ⌨️ **Version 4.1 - Modern Keyboard Shortcuts**
+- **Discord/Slack-style Controls** - Ctrl+Enter to send, Enter for new lines
+- **Improved User Experience** - Familiar keyboard shortcuts for modern app users
+- **Chat Input Enhancement** - Natural text editing with proper line handling
+- **Translation Input Support** - Same modern controls apply to translation mode
+- **Intuitive Interface** - Reduced accidental message sending, better text composition
+
 ### ⚙️ **Model Parameter Control**
 - **Settings Dialog** - 500x600 tabbed interface for model configuration
 - **Core Parameter Control** - Temperature, Top P, Top K, and Repeat Penalty with live value display
@@ -854,7 +883,7 @@ OllamaTkinterUi/
 - **Component Placement** - Token counter in bottom-right, mode controls in left panel
 - **Responsive Design** - All elements adapt to current system state without layout shifts
 - **Status Management** - Color-coded indicators throughout interface with clear meanings
-- **Keyboard Accessibility** - Full keyboard navigation with Enter/Escape shortcuts
+- **Modern Keyboard Controls** - Ctrl+Enter for actions, Enter for new lines (Discord/Slack-style)
 
 ### 🧠 **Enhanced Token Management & Chat Features**
 - **Real-time Token Tracking** - Live conversation monitoring with context history
@@ -915,4 +944,4 @@ This project is an independent third-party application and is not officially aff
 
 **Simple. Intuitive. Feature-Rich.** 🎯
 
-*A GUI that brings AI chat and translation capabilities to your desktop while maintaining ease of use. Perfect for both casual users and power users who need conversation management, multilingual translation, and model configuration.*
+*A GUI that brings AI chat and translation capabilities to your desktop with comprehensive model management and modern keyboard shortcuts (Ctrl+Enter). Perfect for both casual users and power users who need conversation management, multilingual translation, model lifecycle control, and parameter configuration.*
