@@ -97,7 +97,7 @@ class OllamaGUI:
         self.is_downloading = False
         self.downloading_model = None
         
-        self.download_button = ttk.Button(buttons_frame, text="Download", command=self.start_download_action)
+        self.download_button = ttk.Button(buttons_frame, text="Manage Models", command=self.start_download_action)
         self.download_button.pack(side=tk.LEFT, padx=(5, 0))
         
         # Download status label
@@ -1116,15 +1116,15 @@ Once installed, click 'Refresh' in the main application to detect models.
                 return model_name
         return model_name
 
-    def show_download_dialog(self):
-        """Show dialog for downloading a new model."""
+    def show_manage_models_dialog(self):
+        """Show dialog for managing models - download new or delete existing models."""
         if self.is_downloading:
-            return  # Prevent multiple download dialogs
+            return  # Prevent multiple manage dialogs
             
-        # Create download dialog
+        # Create manage models dialog
         dialog = tk.Toplevel(self.root)
-        dialog.title("Download Model")
-        dialog.geometry("700x650")
+        dialog.title("Manage Models")
+        dialog.geometry("800x700")
         dialog.resizable(False, False)
         
         # Make dialog modal
@@ -1133,52 +1133,68 @@ Once installed, click 'Refresh' in the main application to detect models.
         
         # Center the dialog
         dialog.update_idletasks()
-        x = (dialog.winfo_screenwidth() // 2) - (700 // 2)
-        y = (dialog.winfo_screenheight() // 2) - (650 // 2)
-        dialog.geometry(f"700x650+{x}+{y}")
+        x = (dialog.winfo_screenwidth() // 2) - (800 // 2)
+        y = (dialog.winfo_screenheight() // 2) - (700 // 2)
+        dialog.geometry(f"800x700+{x}+{y}")
         
         # Main frame
         main_frame = ttk.Frame(dialog, padding="20")
         main_frame.pack(fill=tk.BOTH, expand=True)
         
         # Title
-        title_label = ttk.Label(main_frame, text="Download Ollama Model", 
+        title_label = ttk.Label(main_frame, text="Manage Ollama Models", 
                                font=("Arial", 14, "bold"))
         title_label.pack(pady=(0, 15))
         
+        # Create notebook for tabbed interface
+        notebook = ttk.Notebook(main_frame)
+        notebook.pack(fill=tk.BOTH, expand=True, pady=(0, 15))
+        
+        # Download Models Tab
+        download_frame = ttk.Frame(notebook)
+        notebook.add(download_frame, text="Download Models")
+        
+        # Manage Installed Models Tab
+        manage_frame = ttk.Frame(notebook)
+        notebook.add(manage_frame, text="Manage Installed")
+        
+        # === DOWNLOAD MODELS TAB CONTENT ===
+        download_content = ttk.Frame(download_frame, padding="10")
+        download_content.pack(fill=tk.BOTH, expand=True)
+        
         # Available models dropdown
-        ttk.Label(main_frame, text="Select from available models:").pack(anchor='w')
+        ttk.Label(download_content, text="Select from available models:").pack(anchor='w')
         
         # Status label for loading
-        status_label = ttk.Label(main_frame, text="Loading available models...", 
+        status_label = ttk.Label(download_content, text="Loading available models...", 
                                 foreground="#1976D2", font=("Arial", 9))
         status_label.pack(anchor='w', pady=(2, 5))
         
         model_var = tk.StringVar()
-        model_dropdown = ttk.Combobox(main_frame, textvariable=model_var, width=50, state="readonly")
+        model_dropdown = ttk.Combobox(download_content, textvariable=model_var, width=50, state="readonly")
         model_dropdown.pack(fill=tk.X, pady=(0, 10))
         
         # Model size selection
-        size_label = ttk.Label(main_frame, text="Choose model size:")
+        size_label = ttk.Label(download_content, text="Choose model size:")
         size_label.pack(anchor='w', pady=(10, 0))
         
         # Status label for size loading
-        size_status_label = ttk.Label(main_frame, text="Select a model first", 
+        size_status_label = ttk.Label(download_content, text="Select a model first", 
                                      foreground="#666666", font=("Arial", 9))
         size_status_label.pack(anchor='w', pady=(2, 5))
         
         size_var = tk.StringVar()
-        size_dropdown = ttk.Combobox(main_frame, textvariable=size_var, width=50, state="readonly")
+        size_dropdown = ttk.Combobox(download_content, textvariable=size_var, width=50, state="readonly")
         size_dropdown.pack(fill=tk.X, pady=(0, 5))
         size_dropdown.config(state='disabled')  # Initially disabled
         
         # Model already downloaded warning (initially hidden)
-        already_downloaded_label = ttk.Label(main_frame, text="", 
+        already_downloaded_label = ttk.Label(download_content, text="", 
                                            foreground="red", font=("Arial", 9, "bold"))
         already_downloaded_label.pack(anchor='w', pady=(0, 10))
         
         # Model information display (always visible)
-        info_frame = ttk.Frame(main_frame)
+        info_frame = ttk.Frame(download_content)
         info_frame.pack(fill=tk.X, pady=(20, 0))
         
         model_info_label = ttk.Label(info_frame, text="Model Information:", 
@@ -1543,17 +1559,159 @@ Once installed, click 'Refresh' in the main application to detect models.
                     hybrid_label.config(text="❌ GPU + CPU - Requires dedicated GPU", foreground="red")
         
         # Manual model name input
-        ttk.Label(main_frame, text="Or enter model name manually:").pack(anchor='w', pady=(20, 0))
-        model_entry = ttk.Entry(main_frame, width=50, font=("Arial", 11))
+        ttk.Label(download_content, text="Or enter model name manually:").pack(anchor='w', pady=(20, 0))
+        model_entry = ttk.Entry(download_content, width=50, font=("Arial", 11))
         model_entry.pack(fill=tk.X, pady=(5, 10))
         
         # Examples
-        examples_label = ttk.Label(main_frame, 
+        examples_label = ttk.Label(download_content, 
                                   text="Enter any model name from ollama.com/search",
                                   font=("Arial", 9), foreground="#666666")
         examples_label.pack(pady=(0, 20))
         
-        # Button frame (moved to bottom with padding)
+        # === MANAGE INSTALLED MODELS TAB CONTENT ===
+        manage_content = ttk.Frame(manage_frame, padding="10")
+        manage_content.pack(fill=tk.BOTH, expand=True)
+        
+        # Installed models section
+        ttk.Label(manage_content, text="Installed Models:", font=("Arial", 12, "bold")).pack(anchor='w', pady=(0, 10))
+        
+        # Installed models listbox with scrollbar
+        listbox_frame = ttk.Frame(manage_content)
+        listbox_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        
+        # Create listbox with scrollbar
+        installed_listbox = tk.Listbox(listbox_frame, font=("Arial", 10), height=12)
+        scrollbar = ttk.Scrollbar(listbox_frame, orient="vertical", command=installed_listbox.yview)
+        installed_listbox.config(yscrollcommand=scrollbar.set)
+        
+        installed_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Model details for selected installed model
+        details_frame = ttk.LabelFrame(manage_content, text="Model Details", padding=10)
+        details_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        # Model details labels
+        selected_model_label = ttk.Label(details_frame, text="No model selected", font=("Arial", 10, "bold"))
+        selected_model_label.pack(anchor='w')
+        
+        model_size_label = ttk.Label(details_frame, text="", font=("Arial", 9))
+        model_size_label.pack(anchor='w')
+        
+        model_modified_label = ttk.Label(details_frame, text="", font=("Arial", 9))
+        model_modified_label.pack(anchor='w')
+        
+        # Action buttons for installed models
+        action_frame = ttk.Frame(manage_content)
+        action_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        refresh_installed_btn = ttk.Button(action_frame, text="🔄 Refresh List", command=lambda: refresh_installed_models())
+        refresh_installed_btn.pack(side=tk.LEFT, padx=(0, 10))
+        
+        delete_model_btn = ttk.Button(action_frame, text="🗑️ Delete Selected", command=lambda: delete_selected_model(), state='disabled')
+        delete_model_btn.pack(side=tk.LEFT, padx=(0, 10))
+        
+        # Status label for manage operations
+        manage_status_label = ttk.Label(manage_content, text="", font=("Arial", 9), foreground="#1976D2")
+        manage_status_label.pack(anchor='w')
+        
+        # Functions for manage installed models tab
+        def refresh_installed_models():
+            """Refresh the list of installed models."""
+            manage_status_label.config(text="Loading installed models...")
+            installed_listbox.delete(0, tk.END)
+            
+            # Get installed models
+            models = self.get_ollama_models()
+            
+            if models:
+                for model in models:
+                    installed_listbox.insert(tk.END, model)
+                manage_status_label.config(text=f"Found {len(models)} installed model(s)")
+            else:
+                manage_status_label.config(text="No models found. Install models using the Download tab.")
+            
+            # Reset selection
+            update_selected_model_details()
+        
+        def update_selected_model_details():
+            """Update details for the selected model."""
+            selection = installed_listbox.curselection()
+            if selection:
+                model_name = installed_listbox.get(selection[0])
+                selected_model_label.config(text=f"Selected: {model_name}")
+                delete_model_btn.config(state='normal')
+                
+                # Get model info
+                model_info = self.get_model_info(model_name)
+                model_size_label.config(text=f"Size: {model_info.get('size', 'Unknown')}")
+                model_modified_label.config(text=f"Context: {model_info.get('context', 'Unknown')}")
+            else:
+                selected_model_label.config(text="No model selected")
+                model_size_label.config(text="")
+                model_modified_label.config(text="")
+                delete_model_btn.config(state='disabled')
+        
+        def delete_selected_model():
+            """Delete the selected model after confirmation."""
+            selection = installed_listbox.curselection()
+            if not selection:
+                return
+                
+            model_name = installed_listbox.get(selection[0])
+            
+            # Confirm deletion
+            from tkinter import messagebox
+            result = messagebox.askyesno(
+                "Confirm Deletion",
+                f"Are you sure you want to delete the model '{model_name}'?\n\n"
+                f"This action cannot be undone. You will need to download the model again to use it.",
+                icon='warning'
+            )
+            
+            if result:
+                # Perform deletion
+                manage_status_label.config(text=f"Deleting {model_name}...")
+                
+                def delete_model():
+                    try:
+                        if not self.ollama_path:
+                            dialog.after(0, lambda: manage_status_label.config(text="Error: Ollama not found"))
+                            return
+                        
+                        # Use ollama rm command to delete the model
+                        result = subprocess.run([self.ollama_path, "rm", model_name], 
+                                              capture_output=True, text=True, timeout=30)
+                        
+                        if result.returncode == 0:
+                            dialog.after(0, lambda: manage_status_label.config(text=f"✅ Successfully deleted {model_name}"))
+                            dialog.after(0, refresh_installed_models)
+                            # If this was the currently selected model in main window, clear it
+                            if hasattr(self, 'selected_model') and self.selected_model == model_name:
+                                dialog.after(0, lambda: setattr(self, 'selected_model', None))
+                                dialog.after(0, lambda: self.update_model_details(None))
+                                dialog.after(0, lambda: self.model_var.set(""))
+                            # Refresh main window model list
+                            dialog.after(0, self.refresh_models)
+                        else:
+                            error_msg = result.stderr.strip() if result.stderr else "Unknown error"
+                            dialog.after(0, lambda: manage_status_label.config(text=f"❌ Failed to delete {model_name}: {error_msg}"))
+                    except subprocess.TimeoutExpired:
+                        dialog.after(0, lambda: manage_status_label.config(text=f"❌ Deletion timed out for {model_name}"))
+                    except Exception as e:
+                        dialog.after(0, lambda: manage_status_label.config(text=f"❌ Error deleting {model_name}: {str(e)}"))
+                
+                # Run deletion in background thread
+                threading.Thread(target=delete_model, daemon=True).start()
+        
+        # Bind listbox selection event
+        installed_listbox.bind('<<ListboxSelect>>', lambda e: update_selected_model_details())
+        
+        # Load installed models initially
+        dialog.after(100, refresh_installed_models)
+        
+        # Button frame (moved to main_frame bottom with padding)
         button_frame = ttk.Frame(main_frame)
         button_frame.pack(fill=tk.X, side=tk.BOTTOM, pady=(20, 0))
         
@@ -2049,7 +2207,7 @@ Once installed, click 'Refresh' in the main application to detect models.
         model_entry.bind('<KeyPress>', on_entry_change)
         
         # Progress frame (initially hidden)
-        progress_frame = ttk.Frame(main_frame)
+        progress_frame = ttk.Frame(download_content)
         progress_label = ttk.Label(progress_frame, text="Download Progress:", 
                                   font=("Arial", 10, "bold"))
         progress_label.pack(anchor='w', pady=(0, 5))
@@ -2088,13 +2246,13 @@ Once installed, click 'Refresh' in the main application to detect models.
         dialog.bind('<Escape>', lambda e: cancel_dialog())
 
     def start_download_action(self):
-        """Handle download button click - either start download or cancel it."""
+        """Handle manage models button click - either manage models or cancel download."""
         if self.is_downloading:
             # Currently downloading, so cancel it
             self.cancel_main_download()
         else:
-            # Not downloading, show download dialog
-            self.show_download_dialog()
+            # Not downloading, show manage models dialog
+            self.show_manage_models_dialog()
     
     def cancel_main_download(self):
         """Cancel download from main window."""
