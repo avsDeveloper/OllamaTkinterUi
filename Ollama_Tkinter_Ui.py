@@ -3035,10 +3035,26 @@ Once installed, click 'Refresh' in the main application to detect models.
 
         def query():
             try:
-                url = "http://localhost:11434/api/generate"
+                url = "http://localhost:11434/api/chat"  # Use chat API instead of generate API
+                
+                # Build messages array with conversation history (including the current user message)
+                messages = []
+                for message in self.conversation_history:
+                    messages.append({
+                        "role": message["role"],
+                        "content": message["content"]
+                    })
+                
+                # Ensure we have at least one message (should not happen, but safety check)
+                if not messages:
+                    messages.append({
+                        "role": "user",
+                        "content": prompt
+                    })
+                
                 payload = {
                     "model": model,
-                    "prompt": prompt,
+                    "messages": messages,
                     "stream": True,
                     "options": {}
                 }
@@ -3075,7 +3091,8 @@ Once installed, click 'Refresh' in the main application to detect models.
                         if line:
                             try:
                                 data = json.loads(line)
-                                chunk = data.get("response", "")
+                                # For chat API, the response content is in 'message.content'
+                                chunk = data.get("message", {}).get("content", "")
                                 self.root.after(0, self.update_chat_with_response, chunk)
                                 if data.get("done"):
                                     break
