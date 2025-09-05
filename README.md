@@ -6,7 +6,9 @@ A Python-based graphical user interface for [Ollama](https://ollama.ai), providi
 
 > **Note**: This is an independent third-party GUI client for Ollama. This project is not officially affiliated with or endorsed by Ollama. Ollama is a trademark of its respective owners.
 
-<img width="1402" height="967" alt="Screenshot from 2025-08-24 22-18-06" src="https://github.com/user-attachments/assets/6687c1e5-3377-4f90-a006-84539aeacf6b" />
+<img width="1400" height="964" alt="Screenshot from 2025-09-03 17-08-10" src="https://github.com/user-attachments/assets/a24fcf77-d704-486e-9034-b9d602588f71" />
+
+<img width="1401" height="963" alt="Screenshot from 2025-09-03 17-09-07" src="https://github.com/user-attachments/assets/9dfbc033-b70b-4e4d-a7a6-973bd0df9e91" />
 
 
 ## 🚀 Overview
