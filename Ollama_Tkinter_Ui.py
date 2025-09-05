@@ -222,7 +222,7 @@ class OllamaGUI:
         input_frame.pack(fill=tk.X, pady=(0, 10))
         
         # User input label
-        input_label = ttk.Label(input_frame, text="Your message:")
+        input_label = ttk.Label(input_frame, text="Your message (Enter for new line, Ctrl+Enter to send):")
         input_label.pack(anchor='w', pady=(0, 5))
         
         # User input entry
@@ -234,7 +234,7 @@ class OllamaGUI:
         button_frame = ttk.Frame(self.chat_interface)
         button_frame.pack(pady=(0, 5))
         
-        self.send_button = ttk.Button(button_frame, text="Send Message", command=self.send_message_from_input, state='disabled')
+        self.send_button = ttk.Button(button_frame, text="Send Message (Ctrl+Enter)", command=self.send_message_from_input, state='disabled')
         self.send_button.pack(side=tk.LEFT, padx=(0, 5))
         
         self.stop_button = ttk.Button(button_frame, text="Stop", command=self.stop_generation, state='disabled')
@@ -252,19 +252,20 @@ class OllamaGUI:
         translator_title.pack(pady=(0, 10), anchor='w')
         
         # Input text frame
-        input_text_frame = ttk.LabelFrame(self.translator_interface, text="Text to Translate", padding=10)
+        input_text_frame = ttk.LabelFrame(self.translator_interface, text="Text to Translate (Enter for new line, Ctrl+Enter to translate)", padding=10)
         input_text_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
         
         self.translation_input = scrolledtext.ScrolledText(input_text_frame, wrap=tk.WORD, font=('Arial', 11), 
                                                           height=8, bg='#FFFFFF', fg='#333333')
         self.translation_input.pack(fill=tk.BOTH, expand=True)
         self.translation_input.bind("<KeyRelease>", self.on_translation_input_change)
+        self.translation_input.bind("<KeyPress>", self.on_translation_keypress)
         
         # Translation buttons frame
         translate_buttons_frame = ttk.Frame(self.translator_interface)
         translate_buttons_frame.pack(fill=tk.X, pady=(0, 10))
         
-        self.translate_button = ttk.Button(translate_buttons_frame, text="🌐 Translate", 
+        self.translate_button = ttk.Button(translate_buttons_frame, text="🌐 Translate (Ctrl+Enter)", 
                                           command=self.translate_text, state='disabled')
         self.translate_button.pack(side=tk.LEFT, padx=(0, 5))
         
@@ -2710,13 +2711,37 @@ Once installed, click 'Refresh' in the main application to detect models.
         if str(self.user_input.cget('state')) == 'disabled':
             return "break"
             
-        # Handle Enter key - send message (Ctrl+Enter for new line)
-        if event.keysym == "Return" and not event.state & 0x4:  # 0x4 is Ctrl key
-            # Prevent default newline insertion and send message
+        # Handle Ctrl+Enter - send message (Enter alone for new line)
+        if event.keysym == "Return" and event.state & 0x4:  # 0x4 is Ctrl key
+            # Send message
             self.send_message_from_input()
             return "break"
         
-        # Allow normal text editing
+        # Allow normal text editing for Enter and other keys
+        return None
+
+    def on_translation_keypress(self, event):
+        """Handle key presses in the translation input field."""
+        # Handle Ctrl+Enter - start translation (Enter alone for new line)
+        if event.keysym == "Return" and event.state & 0x4:  # 0x4 is Ctrl key
+            # Check if translation is possible
+            text = self.translation_input.get("1.0", tk.END).strip()
+            if text and self.selected_model and not self.translation_in_progress:
+                # Start translation
+                self.translate_text()
+                return "break"  # Prevent default action
+            elif self.translation_in_progress:
+                # Show message if translation is already in progress
+                self.show_status_message("⚠️ Translation already in progress. Please wait or stop current translation.")
+                return "break"
+            elif not text:
+                self.show_status_message("⚠️ Please enter text to translate.")
+                return "break"
+            elif not self.selected_model:
+                self.show_status_message("⚠️ Please select a model first.")
+                return "break"
+        
+        # Allow normal text editing for Enter and other keys
         return None
 
     def send_message_from_input(self):
