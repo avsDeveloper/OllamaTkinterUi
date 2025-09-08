@@ -84,6 +84,9 @@ class OllamaGUI:
         self.model_dropdown = ttk.Combobox(model_frame, textvariable=self.model_var, width=25, state="readonly")
         self.model_dropdown.pack(fill=tk.X, pady=(0, 5))
         
+        # Bind model dropdown selection to automatically choose the model
+        self.model_dropdown.bind('<<ComboboxSelected>>', lambda e: self.choose_model())
+        
         buttons_frame = ttk.Frame(model_frame)
         buttons_frame.pack(fill=tk.X)
         
@@ -193,6 +196,12 @@ class OllamaGUI:
             self.source_lang_combo, self.target_lang_combo, self.swap_button,
             self.auto_detect_check, self.style_combo
         ]
+        
+        # Bind events to save settings when translation preferences change
+        self.source_lang_combo.bind('<<ComboboxSelected>>', lambda e: self.save_settings())
+        self.target_lang_combo.bind('<<ComboboxSelected>>', lambda e: self.save_settings())
+        self.auto_detect_check.bind('<Button-1>', lambda e: self.root.after(10, self.save_settings))
+        self.style_combo.bind('<<ComboboxSelected>>', lambda e: self.save_settings())
         
         # Logs section (in left panel)
         logs_label = ttk.Label(left_frame, text="System Logs:")
@@ -315,6 +324,10 @@ class OllamaGUI:
         # Initialize Ollama
         self.initialize_ollama()
 
+        # Settings file path - in same directory as script
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        self.settings_file = os.path.join(script_dir, "ollama_gui_settings.json")
+
         # Variables
         self.ollama_process = None
         self.server_starting = False
@@ -362,6 +375,9 @@ class OllamaGUI:
         # Set initial translation settings state (disabled in chat mode)
         self.set_translation_settings_state('disabled')
         
+        # Load saved settings from file
+        self.load_settings()
+
         # Handle window close
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
         
@@ -3134,6 +3150,9 @@ Once installed, click 'Refresh' in the main application to detect models.
         
         self.selected_model = selected
         
+        # Save settings when model changes
+        self.save_settings()
+        
         # Reset conversation history for new model
         self.reset_conversation_history()
         
@@ -3669,9 +3688,159 @@ Once installed, click 'Refresh' in the main application to detect models.
         self.is_generating = False
         self.current_request = None
 
+    def get_default_settings(self):
+        """Get default settings values."""
+        return {
+            # Model selection
+            'selected_model': '',
+            
+            # Translation settings
+            'source_language': 'English',
+            'target_language': 'Spanish',
+            'auto_detect_language': False,
+            'translation_style': 'Natural',
+            
+            # Model parameters
+            'response_timeout': '60',
+            'show_thinking': False,
+            'temperature': 0.7,
+            'top_p': 0.9,
+            'top_k': 40,
+            'repeat_penalty': 1.1,
+            'max_tokens': 0,
+            'seed': -1,
+            
+            # UI preferences
+            'window_geometry': '1400x900',
+            'mode': 'chat'  # 'chat' or 'translator'
+        }
+    
+    def save_settings(self):
+        """Save current settings to file."""
+        try:
+            settings = {
+                # Model selection
+                'selected_model': self.selected_model if self.selected_model else '',
+                
+                # Translation settings
+                'source_language': self.source_lang_var.get(),
+                'target_language': self.target_lang_var.get(),
+                'auto_detect_language': self.auto_detect_var.get(),
+                'translation_style': self.translation_style_var.get(),
+                
+                # Model parameters
+                'response_timeout': self.response_timeout_var.get(),
+                'show_thinking': self.show_thinking_var.get(),
+                'temperature': self.temperature_var.get(),
+                'top_p': self.top_p_var.get(),
+                'top_k': self.top_k_var.get(),
+                'repeat_penalty': self.repeat_penalty_var.get(),
+                'max_tokens': self.max_tokens_var.get(),
+                'seed': self.seed_var.get(),
+                
+                # UI preferences
+                'window_geometry': self.root.geometry(),
+                'mode': 'translator' if self.is_translator_mode else 'chat'
+            }
+            
+            with open(self.settings_file, 'w') as f:
+                json.dump(settings, f, indent=2)
+                
+            # Debug message (can be removed later)
+            print(f"Settings saved to {self.settings_file}")
+                
+        except Exception as e:
+            # Don't show error to user, just log it
+            print(f"Error saving settings: {e}")
+    
+    def load_settings(self):
+        """Load settings from file."""
+        try:
+            if not os.path.exists(self.settings_file):
+                # No settings file exists, use defaults
+                print("No settings file found, using defaults")
+                return
+                
+            with open(self.settings_file, 'r') as f:
+                settings = json.load(f)
+            
+            print(f"Loading settings from {self.settings_file}")
+            
+            # Apply settings with fallbacks to defaults
+            defaults = self.get_default_settings()
+            
+            # Translation settings
+            self.source_lang_var.set(settings.get('source_language', defaults['source_language']))
+            self.target_lang_var.set(settings.get('target_language', defaults['target_language']))
+            self.auto_detect_var.set(settings.get('auto_detect_language', defaults['auto_detect_language']))
+            self.translation_style_var.set(settings.get('translation_style', defaults['translation_style']))
+            
+            # Model parameters
+            self.response_timeout_var.set(settings.get('response_timeout', defaults['response_timeout']))
+            self.show_thinking_var.set(settings.get('show_thinking', defaults['show_thinking']))
+            self.temperature_var.set(settings.get('temperature', defaults['temperature']))
+            self.top_p_var.set(settings.get('top_p', defaults['top_p']))
+            self.top_k_var.set(settings.get('top_k', defaults['top_k']))
+            self.repeat_penalty_var.set(settings.get('repeat_penalty', defaults['repeat_penalty']))
+            self.max_tokens_var.set(settings.get('max_tokens', defaults['max_tokens']))
+            self.seed_var.set(settings.get('seed', defaults['seed']))
+            
+            # Window geometry
+            window_geometry = settings.get('window_geometry', defaults['window_geometry'])
+            if window_geometry:
+                self.root.geometry(window_geometry)
+            
+            # Mode setting - restore after UI is fully initialized
+            saved_mode = settings.get('mode', defaults['mode'])
+            if saved_mode == 'translator':
+                # Schedule mode switch after UI is ready
+                self.root.after(100, self.switch_to_translator_mode)
+            
+            # Model selection - restore after models are loaded
+            saved_model = settings.get('selected_model', '')
+            if saved_model:
+                # Schedule model restoration after models list is populated
+                self.root.after(200, lambda: self.restore_selected_model(saved_model))
+                
+        except Exception as e:
+            # Don't show error to user, just log it and continue with defaults
+            print(f"Error loading settings: {e}")
+    
+    def restore_selected_model(self, model_name):
+        """Restore previously selected model if it's still available."""
+        try:
+            if not model_name:
+                return
+                
+            # Get current available models
+            models = self.get_ollama_models()
+            
+            # Check if the saved model is still available
+            if model_name in models:
+                # Set the model in dropdown
+                self.model_var.set(model_name)
+                
+                # Actually select the model (this will trigger loading)
+                self.selected_model = model_name
+                self.choose_model()
+                
+                self.show_status_message(f"✅ Restored previous model: {model_name}")
+            else:
+                # Model not available anymore
+                if models:
+                    self.show_status_message(f"⚠️ Previous model '{model_name}' not found. Available models refreshed.")
+                else:
+                    self.show_status_message(f"⚠️ Previous model '{model_name}' not found. No models available.")
+                    
+        except Exception as e:
+            print(f"Error restoring model: {e}")
+
     def on_closing(self):
         """Handle application closing - cleanup processes."""
         try:
+            # Save settings before closing
+            self.save_settings()
+            
             # Cancel any ongoing generation (chat or translation)
             if self.is_generating:
                 self.is_generating = False
@@ -3993,6 +4162,9 @@ Once installed, click 'Refresh' in the main application to detect models.
                 else:
                     self.show_status_message("No parameter changes made")
                 
+                # Save settings after applying changes
+                self.save_settings()
+                
                 dialog.destroy()
                 
             except ValueError as e:
@@ -4081,6 +4253,9 @@ Once installed, click 'Refresh' in the main application to detect models.
             # Update button appearance
             self.update_mode_buttons()
             
+            # Save settings
+            self.save_settings()
+            
             self.show_status_message("Switched to Chat mode")
     
     def switch_to_translator_mode(self):
@@ -4104,6 +4279,9 @@ Once installed, click 'Refresh' in the main application to detect models.
             
             # Focus on translation input
             self.translation_input.focus()
+            
+            # Save settings
+            self.save_settings()
             
             self.show_status_message("Switched to Translator mode")
     
@@ -4133,6 +4311,10 @@ Once installed, click 'Refresh' in the main application to detect models.
             target = self.target_lang_var.get()
             self.source_lang_var.set(target)
             self.target_lang_var.set(source)
+            
+            # Save settings after swapping languages
+            self.save_settings()
+            
             self.show_status_message(f"Swapped languages: {target} ⇄ {source}")
     
     def on_translation_input_change(self, event=None):

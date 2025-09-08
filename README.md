@@ -73,6 +73,18 @@ Perfect for users who need AI tools with features like translation capabilities,
 - **Parameter Persistence** - Settings maintained across model switches
 - **Detailed Descriptions** - Clear explanations for each parameter's effect
 
+### 💾 **Settings Persistence**
+- **Automatic Settings Save** - All user preferences automatically saved across sessions
+- **Comprehensive Persistence** - Selected model, translation languages, model parameters, window size, and interface mode
+- **Local Configuration** - Settings stored in `ollama_gui_settings.json` in the same directory as the app for easy backup/restore
+- **Smart Model Restoration** - Automatically restores previously selected model if still available
+- **Translation Preferences** - Source/target languages, auto-detect settings, and translation style preserved
+- **UI State Memory** - Window geometry and interface mode (Chat/Translator) remembered
+- **Parameter Memory** - All model parameters (temperature, top-p, etc.) maintained between sessions
+- **Error Resilience** - Graceful fallback to defaults if settings file is corrupted or invalid
+- **Real-time Updates** - Settings saved immediately when changed (model selection, language swap, mode switch)
+- **Cross-Session Continuity** - Resume exactly where you left off with your preferred configuration
+
 ### 🎭 **Dual-Mode Interface Design**
 - **Chat Mode** - Traditional AI conversation interface with token management
 - **Translation Mode** - Translation interface with language controls

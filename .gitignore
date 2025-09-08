@@ -1,1 +1,52 @@
-__pycache__/Ollama_Tkinter_Ui.cpython-312.pyc
+# Only track LICENSE, README.md, and the main app script
+# Ignore everything else by default
+*
+
+# Explicitly include the files we want to track
+!.gitignore
+!LICENSE
+!README.md
+!Ollama_Tkinter_Ui.py
+
+# Ignore settings files
+ollama_gui_settings.json
+
+# Ignore Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+
+# Ignore test files and demo scripts
+test_*.py
+demo_*.py
+*_test.py
+*_demo.py
+
+# Ignore temporary files
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
+
+# Ignore editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Ignore log files
+*.log
+
+# Ignore any local configuration files
+config.json
+settings.json
+*.conf
+
+# Ignore backup files
+*.bak
+*.backup
+*.orig
