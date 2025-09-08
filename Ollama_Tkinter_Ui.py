@@ -97,6 +97,9 @@ class OllamaGUI:
         self.is_downloading = False
         self.downloading_model = None
         
+        # Add model status tracking
+        self.model_status = "Not selected"  # Possible values: "Not selected", "Loading", "Ready", "Error"
+        
         self.download_button = ttk.Button(buttons_frame, text="Manage Models", command=self.start_download_action)
         self.download_button.pack(side=tk.LEFT, padx=(5, 0))
         
@@ -104,21 +107,22 @@ class OllamaGUI:
         self.download_status_label = ttk.Label(model_frame, text="", foreground="#1976D2", font=('Arial', 9))
         self.download_status_label.pack(pady=(5, 0), anchor='w')
         
-        # Model details display - fixed height container to prevent UI jumping (always 5 lines)
-        self.model_details_container = ttk.Frame(model_frame, height=100)  # Fixed height for 5 lines
+        # Model details display - fixed height container to prevent UI jumping (always 6 lines)
+        self.model_details_container = ttk.Frame(model_frame, height=120)  # Fixed height for 6 lines
         self.model_details_container.pack(pady=(2, 0), fill=tk.X)
         self.model_details_container.pack_propagate(False)  # Prevent shrinking
         
-        # Create 5 fixed lines for model details (always visible)
+        # Create 6 fixed lines for model details (always visible) - first line for status
         self.model_detail_lines = []
-        for i in range(5):
+        for i in range(6):
             line_label = ttk.Label(self.model_details_container, text="", 
                                  foreground="green", font=('Arial', 9))
             line_label.pack(anchor='w')
             self.model_detail_lines.append(line_label)
         
         # Set initial state - no model selected
-        self.model_detail_lines[0].config(text="⚠️ No model selected", foreground="red")
+        self.model_detail_lines[0].config(text="Model status: Not selected", foreground="red")
+        # Leave other lines empty initially
         
         # Mode Selection Section (in left panel, after model selection)
         mode_frame = ttk.Frame(left_frame)
@@ -2074,12 +2078,19 @@ Once installed, click 'Refresh' in the main application to detect models.
             if hasattr(self, 'download_button'):
                 self.download_button.config(text="Download", command=self.start_download_action)
             
-            # Re-enable chat input if a model is selected
-            if hasattr(self, 'selected_model') and self.selected_model:
+            # Re-enable chat input only if a model is selected AND ready
+            if (hasattr(self, 'selected_model') and self.selected_model and 
+                hasattr(self, 'model_status') and self.model_status == "Ready"):
                 if hasattr(self, 'user_input'):
                     self.user_input.config(state='normal')
                 if hasattr(self, 'send_button'):
                     self.send_button.config(state='normal')
+            else:
+                # Keep disabled if no model selected or model not ready
+                if hasattr(self, 'user_input'):
+                    self.user_input.config(state='disabled')
+                if hasattr(self, 'send_button'):
+                    self.send_button.config(state='disabled')
         
         def download_complete(model_name):
             """Handle successful download completion."""
@@ -2266,12 +2277,13 @@ Once installed, click 'Refresh' in the main application to detect models.
         if hasattr(self, 'download_status_label'):
             self.download_status_label.config(text="")
         
-        # Re-enable chat input if a model is selected
-        if self.selected_model:
+        # Re-enable chat input only if a model is selected AND ready
+        if (self.selected_model and hasattr(self, 'model_status') and 
+            self.model_status == "Ready"):
             self.user_input.config(state='normal')
             self.send_button.config(state='normal')
         else:
-            # Keep disabled if no model selected
+            # Keep disabled if no model selected or model not ready
             self.user_input.config(state='disabled')
             self.send_button.config(state='disabled')
         
@@ -2359,8 +2371,9 @@ Once installed, click 'Refresh' in the main application to detect models.
         self.download_status_label.config(text="")
         self.download_button.config(text="Download", command=self.start_download_action)
         
-        # Re-enable chat only if a model is selected
-        if self.selected_model:
+        # Re-enable chat only if a model is selected AND ready
+        if (self.selected_model and hasattr(self, 'model_status') and 
+            self.model_status == "Ready"):
             self.send_button.config(state='normal')
             self.user_input.config(state='normal')
         else:
@@ -2670,9 +2683,10 @@ Once installed, click 'Refresh' in the main application to detect models.
                                 model_info["gpu_cpu_usage"] = f"{gpu_pct}%/{cpu_pct}%"
                                 break
                         else:
-                            # If no percentage found in ollama ps output, get system-wide usage
-                            gpu_usage, cpu_usage = self.get_system_usage_info()
-                            model_info["gpu_cpu_usage"] = f"{gpu_usage}%/{cpu_usage}%"
+                            # If no percentage found in ollama ps output, but model is in ps
+                            # This means model is loading or starting up
+                            model_info["ram_usage"] = "Loading"
+                            model_info["gpu_cpu_usage"] = "0%/0%"
                         break
                 else:
                     model_info["ram_usage"] = "Loading"
@@ -2686,88 +2700,406 @@ Once installed, click 'Refresh' in the main application to detect models.
             self.show_status_message(f"Error getting model info: {str(e)}")
             return {"size": "Error", "ram_usage": "Error", "gpu_cpu_usage": "Error", "context": "Error"}
 
-    def update_model_details(self, model_name, loading=False):
+    def update_model_details(self, model_name, loading=False, retry_count=0):
         """Update the model details display with information about the selected model."""
         
-        # Clear all lines first
-        for line in self.model_detail_lines:
-            line.config(text="", foreground="green")
+        # Check if this operation was cancelled (user switched models)
+        if (hasattr(self, 'model_loading_cancelled') and self.model_loading_cancelled and 
+            getattr(self, 'current_loading_model', '') != model_name):
+            return
         
         if not model_name:
-            # Show "No model selected" in first line
-            self.model_detail_lines[0].config(text="⚠️ No model selected", foreground="red")
+            # Clear all lines first
+            for line in self.model_detail_lines:
+                line.config(text="", foreground="green")
+            
+            # No model selected state
+            self.model_status = "Not selected"
+            self.model_detail_lines[0].config(text="Model status: Not selected", foreground="red")
+            # Leave the second line empty when no model is selected
             
             # Disable chat input and send button when no model is selected
             self.user_input.config(state='disabled')
             self.send_button.config(state='disabled')
             return
         
+        short_name = model_name.split(':')[0] if ':' in model_name else model_name
+        
         # Show loading state immediately
         if loading:
-            short_name = model_name.split(':')[0] if ':' in model_name else model_name
-            self.model_detail_lines[0].config(text=f"Selected model: {short_name}", foreground="green")
-            self.model_detail_lines[1].config(text="Model size: Loading...", foreground="#1976D2")
-            self.model_detail_lines[2].config(text="RAM usage: Loading...", foreground="#1976D2")
-            self.model_detail_lines[3].config(text="CPU/GPU usage: Loading...", foreground="#1976D2")
-            self.model_detail_lines[4].config(text="Context size: Loading...", foreground="#1976D2")
+            # Clear all lines first
+            for line in self.model_detail_lines:
+                line.config(text="", foreground="green")
+                
+            self.model_status = "Loading"
+            self.model_detail_lines[0].config(text="Model status: Loading", foreground="#1976D2")
+            self.model_detail_lines[1].config(text=f"Selected model: {short_name}", foreground="green")
+            # Don't show model data during loading - keep other lines empty
+            
+            # Disable chat input and send button during loading
+            self.user_input.config(state='disabled')
+            self.send_button.config(state='disabled')
             return
         
-        # Get model information
-        model_info = self.get_model_info(model_name)
+        # Check again if operation was cancelled before proceeding
+        if (hasattr(self, 'model_loading_cancelled') and self.model_loading_cancelled and 
+            getattr(self, 'current_loading_model', '') != model_name):
+            return
         
-        # Update all 5 lines with actual data
-        short_name = model_name.split(':')[0] if ':' in model_name else model_name
-        self.model_detail_lines[0].config(text=f"Selected model: {short_name}", foreground="green")
-        
-        # Set color based on content - blue for loading/unknown, green for actual data
-        size_color = "#1976D2" if model_info['size'] in ["Unknown", "Loading...", "Error"] else "green"
-        ram_color = "#1976D2" if model_info['ram_usage'] in ["Unknown", "Loading...", "Error", "Not loaded"] else "green"
-        usage_color = "#1976D2" if model_info['gpu_cpu_usage'] in ["Unknown", "Loading...", "Error", "0%/0%"] else "green"
-        context_color = "#1976D2" if model_info['context'] in ["Unknown", "Loading...", "Error"] else "green"
-        
-        self.model_detail_lines[1].config(text=f"Model size: {model_info['size']}", foreground=size_color)
-        self.model_detail_lines[2].config(text=f"RAM usage: {model_info['ram_usage']}", foreground=ram_color)
-        self.model_detail_lines[3].config(text=f"CPU/GPU usage: {model_info['gpu_cpu_usage']}", foreground=usage_color)
-        self.model_detail_lines[4].config(text=f"Context size: {model_info['context']}", foreground=context_color)
-        
-        # Extract and store max context tokens for token counter
-        context_str = model_info['context']
-        if context_str not in ["Unknown", "Loading...", "Error"]:
-            try:
-                if 'K' in context_str:
-                    # Handle "4K", "8K", etc.
-                    self.max_context_tokens = int(context_str.replace('K', '')) * 1000
-                else:
-                    # Handle raw numbers
-                    self.max_context_tokens = int(context_str)
-            except (ValueError, AttributeError):
-                self.max_context_tokens = 4096  # Default fallback
+        # First check if model is loaded using basic ollama ps check
+        if self.is_model_loaded_basic(model_name):
+            # Model appears to be loaded, now get detailed info asynchronously
+            self.fetch_model_info_async(model_name)
         else:
-            self.max_context_tokens = 4096  # Default fallback
+            # Model might be loading or not loaded
+            # Determine max retries based on model size
+            max_retries = 5  # Default for small models (5 seconds)
+            model_lower = model_name.lower()
+            if any(size in model_lower for size in ['70b', '72b', '405b']):
+                max_retries = 60  # 1 minute for very large models
+            elif any(size in model_lower for size in ['13b', '14b', '27b', '30b', '34b']):
+                max_retries = 45  # 45 seconds for large models  
+            elif any(size in model_lower for size in ['7b', '8b', '9b']):
+                max_retries = 30  # 30 seconds for medium models
+            
+            if retry_count < max_retries:
+                # Check if operation was cancelled before retrying
+                if (hasattr(self, 'model_loading_cancelled') and self.model_loading_cancelled and 
+                    getattr(self, 'current_loading_model', '') != model_name):
+                    return
+                
+                # Only update UI if this is the first check (retry_count == 0)
+                # or if current status is not already "Loading"
+                if retry_count == 0 or getattr(self, 'model_status', '') != "Loading":
+                    self.model_status = "Loading"
+                    self.model_detail_lines[0].config(text="Model status: Loading", foreground="#1976D2")
+                    self.model_detail_lines[1].config(text=f"Selected model: {short_name}", foreground="green")
+                    
+                    # Keep chat disabled during loading
+                    self.user_input.config(state='disabled')
+                    self.send_button.config(state='disabled')
+                    
+                    # Clear model data lines during loading (only if not already cleared)
+                    self.model_detail_lines[2].config(text="", foreground="green")
+                    self.model_detail_lines[3].config(text="", foreground="green") 
+                    self.model_detail_lines[4].config(text="", foreground="green")
+                    self.model_detail_lines[5].config(text="", foreground="green")
+                
+                # Retry checking after a short delay in case model is still loading
+                def retry_check():
+                    # Check if operation wasn't cancelled before retrying
+                    if (not getattr(self, 'model_loading_cancelled', False) or 
+                        getattr(self, 'current_loading_model', '') == model_name):
+                        self.update_model_details(model_name, loading=False, retry_count=retry_count + 1)
+                
+                # Schedule retry after 1 second
+                self.root.after(1000, retry_check)
+            else:
+                # After max retries exceeded, keep showing loading instead of error
+                # Large models may still be initializing
+                if (not getattr(self, 'model_loading_cancelled', False) or 
+                    getattr(self, 'current_loading_model', '') == model_name):
+                    
+                    # For large models, continue showing loading state instead of error
+                    if any(size in model_lower for size in ['70b', '72b', '405b', '13b', '14b', '27b', '30b', '34b']):
+                        self.model_status = "Loading"
+                        self.model_detail_lines[0].config(text="Model status: Loading (large model may take longer)", foreground="#1976D2")
+                        self.model_detail_lines[1].config(text=f"Selected model: {short_name}", foreground="green")
+                        
+                        # Keep checking every 5 seconds for large models
+                        def extended_check():
+                            if (not getattr(self, 'model_loading_cancelled', False) or 
+                                getattr(self, 'current_loading_model', '') == model_name):
+                                # Reset retry count and continue checking
+                                self.update_model_details(model_name, loading=False, retry_count=0)
+                        
+                        self.root.after(5000, extended_check)  # Check again in 5 seconds
+                    else:
+                        # Only show error for smaller models that should load quickly
+                        self.model_status = "Error"
+                        self.model_detail_lines[0].config(text="Model status: Error", foreground="red")
+                        self.model_detail_lines[1].config(text=f"Selected model: {short_name}", foreground="green")
+                    
+                    # Keep chat disabled until model is ready
+                    self.user_input.config(state='disabled')
+                    self.send_button.config(state='disabled')
+                    
+                    # Clear model data lines when not ready
+                    self.model_detail_lines[2].config(text="", foreground="green")
+                    self.model_detail_lines[3].config(text="", foreground="green") 
+                    self.model_detail_lines[4].config(text="", foreground="green")
+                    self.model_detail_lines[5].config(text="", foreground="green")
+    
+    def is_model_loaded_basic(self, model_name):
+        """Quick check if model is loaded using ollama ps."""
+        if not self.ollama_path:
+            return False
+            
+        try:
+            result = subprocess.run([self.ollama_path, "ps"], 
+                                 capture_output=True, text=True, timeout=3)
+            
+            if result.returncode == 0 and result.stdout.strip():
+                model_base_name = model_name.split(':')[0]
+                ps_lines = result.stdout.split('\n')
+                
+                # Skip header line and check model entries
+                for line in ps_lines[1:]:  # Skip first line (header)
+                    if line.strip():  # Skip empty lines
+                        # Check if model name appears in this line
+                        if model_base_name.lower() in line.lower() or model_name.lower() in line.lower():
+                            # Additional check: ensure model has memory usage info (means it's actually loaded)
+                            # Look for memory patterns like "4.5 GB" or "512 MB" 
+                            if re.search(r'\d+(?:\.\d+)?\s*(GB|MB)', line):
+                                return True
+                            # If model appears but has no memory info, it might still be loading
+                            return False
+            return False
+            
+        except Exception:
+            return False
+    
+    def fetch_model_info_async(self, model_name):
+        """Fetch model information asynchronously after model is confirmed loaded."""
+        def fetch_info():
+            try:
+                # Check if operation was cancelled before starting
+                if (hasattr(self, 'model_loading_cancelled') and self.model_loading_cancelled and 
+                    getattr(self, 'current_loading_model', '') != model_name):
+                    return
+                
+                # Extended delay for large models to ensure they're fully stabilized
+                model_lower = model_name.lower()
+                if any(size in model_lower for size in ['70b', '72b', '405b']):
+                    time.sleep(3.0)  # 3 seconds for very large models
+                elif any(size in model_lower for size in ['13b', '14b', '27b', '30b', '34b']):
+                    time.sleep(2.0)  # 2 seconds for large models
+                else:
+                    time.sleep(1.0)  # 1 second for smaller models
+                
+                # Check again if operation was cancelled during delay
+                if (hasattr(self, 'model_loading_cancelled') and self.model_loading_cancelled and 
+                    getattr(self, 'current_loading_model', '') != model_name):
+                    return
+                
+                # Double-check that model is still loaded before getting details
+                if not self.is_model_loaded_basic(model_name):
+                    # Model disappeared, go back to loading state
+                    if (not getattr(self, 'model_loading_cancelled', False) or 
+                        getattr(self, 'current_loading_model', '') == model_name):
+                        self.root.after(0, lambda: self.update_model_details_safe(model_name, loading=False))
+                    return
+                
+                # Get detailed model information
+                model_info = self.get_model_info(model_name)
+                
+                # Validate that we got meaningful model info before declaring ready
+                if (model_info and model_info.get('ram_usage') not in ['Unknown', 'Error', 'Loading', 'Not loaded'] and 
+                    model_info.get('size') not in ['Unknown', 'Error'] and
+                    model_info.get('context') not in ['Unknown', 'Error']):
+                    
+                    # Final check before updating UI
+                    if (not getattr(self, 'model_loading_cancelled', False) or 
+                        getattr(self, 'current_loading_model', '') == model_name):
+                        # Schedule UI update on main thread
+                        self.root.after(0, lambda: self.update_model_info_display(model_name, model_info))
+                else:
+                    # Model info not complete yet, continue loading
+                    if (not getattr(self, 'model_loading_cancelled', False) or 
+                        getattr(self, 'current_loading_model', '') == model_name):
+                        # Go back to checking if model is loaded
+                        self.root.after(0, lambda: self.update_model_details_safe(model_name, loading=False))
+                
+            except Exception as e:
+                # Only show error if operation wasn't cancelled
+                if (not getattr(self, 'model_loading_cancelled', False) or 
+                    getattr(self, 'current_loading_model', '') == model_name):
+                    # Don't immediately show error - go back to loading state for large models
+                    model_lower = model_name.lower()
+                    if any(size in model_lower for size in ['70b', '72b', '405b', '13b', '14b', '27b', '30b', '34b']):
+                        # For large models, retry the loading process
+                        self.root.after(0, lambda: self.update_model_details_safe(model_name, loading=False))
+                    else:
+                        # For small models, show error
+                        self.root.after(0, lambda: self.handle_model_info_error(model_name, str(e)))
         
-        # Update token counter display
-        self.update_token_counter()
+        # Show intermediate loading status while we fetch detailed info
+        # Only if operation wasn't cancelled
+        if (not getattr(self, 'model_loading_cancelled', False) or 
+            getattr(self, 'current_loading_model', '') == model_name):
+            short_name = model_name.split(':')[0] if ':' in model_name else model_name
+            self.model_status = "Loading"
+            self.model_detail_lines[0].config(text="Model status: Loading", foreground="#1976D2")
+            self.model_detail_lines[1].config(text=f"Selected model: {short_name}", foreground="green")
+        
+        # Run in background thread to avoid blocking UI or user interactions
+        threading.Thread(target=fetch_info, daemon=True).start()
+    
+    def update_model_info_display(self, model_name, model_info):
+        """Update the UI with fetched model information."""
+        # Check if operation was cancelled before updating UI
+        if (hasattr(self, 'model_loading_cancelled') and self.model_loading_cancelled and 
+            getattr(self, 'current_loading_model', '') != model_name):
+            return
+            
+        short_name = model_name.split(':')[0] if ':' in model_name else model_name
+        
+        # Check if we got valid model info (indicates model is ready)
+        # A model is only ready if it has actual resource usage data (loaded and running)
+        if (model_info['size'] not in ["Error", "Unknown", "Loading"] and 
+            model_info['ram_usage'] not in ["Error", "Unknown", "Loading", "Loading...", "Not loaded"] and
+            model_info['gpu_cpu_usage'] not in ["Error", "Unknown", "0%/0%"] and
+            model_info['context'] not in ["Error", "Unknown"] and
+            # Additional check: ram_usage should show actual memory usage, not just "Loaded"
+            model_info['ram_usage'] not in ["Loading", "Loaded"] and
+            ('GB' in model_info['ram_usage'] or 'MB' in model_info['ram_usage'] or '~' in model_info['ram_usage'])):
+            self.model_status = "Ready"
+            status_color = "green"
+            status_text = "Model status: Ready"
+            
+            # Enable chat input and send button when model is ready
+            self.user_input.config(state='normal')
+            self.send_button.config(state='normal')
+            
+            # Update chat display to show model is ready
+            self.update_chat_for_ready_model(model_name)
+            
+            # Show model data
+            # Set color based on content - blue for loading/unknown, green for actual data
+            size_color = "#1976D2" if model_info['size'] in ["Unknown", "Loading...", "Error"] else "green"
+            ram_color = "#1976D2" if model_info['ram_usage'] in ["Unknown", "Loading...", "Error", "Not loaded"] else "green"
+            usage_color = "#1976D2" if model_info['gpu_cpu_usage'] in ["Unknown", "Loading...", "Error", "0%/0%"] else "green"
+            context_color = "#1976D2" if model_info['context'] in ["Unknown", "Loading...", "Error"] else "green"
+            
+            self.model_detail_lines[2].config(text=f"Model size: {model_info['size']}", foreground=size_color)
+            self.model_detail_lines[3].config(text=f"RAM usage: {model_info['ram_usage']}", foreground=ram_color)
+            self.model_detail_lines[4].config(text=f"CPU/GPU usage: {model_info['gpu_cpu_usage']}", foreground=usage_color)
+            self.model_detail_lines[5].config(text=f"Context size: {model_info['context']}", foreground=context_color)
+            
+            # Extract and store max context tokens for token counter
+            context_str = model_info['context']
+            if context_str not in ["Unknown", "Loading...", "Error"]:
+                try:
+                    if 'K' in context_str:
+                        # Handle "4K", "8K", etc.
+                        self.max_context_tokens = int(context_str.replace('K', '')) * 1000
+                    else:
+                        # Handle raw numbers
+                        self.max_context_tokens = int(context_str)
+                except (ValueError, AttributeError):
+                    self.max_context_tokens = 4096  # Default fallback
+            else:
+                self.max_context_tokens = 4096  # Default fallback
+            
+            # Update token counter display
+            self.update_token_counter()
+        else:
+            self.model_status = "Error"
+            status_color = "red"
+            status_text = "Model status: Error"
+            
+            # Keep chat disabled on error
+            self.user_input.config(state='disabled')
+            self.send_button.config(state='disabled')
+            
+            # Clear model data lines when not ready
+            self.model_detail_lines[2].config(text="", foreground="green")
+            self.model_detail_lines[3].config(text="", foreground="green") 
+            self.model_detail_lines[4].config(text="", foreground="green")
+            self.model_detail_lines[5].config(text="", foreground="green")
+        
+        # Update status and model name lines
+        self.model_detail_lines[0].config(text=status_text, foreground=status_color)
+        self.model_detail_lines[1].config(text=f"Selected model: {short_name}", foreground="green")
+    
+    def handle_model_info_error(self, model_name, error_msg):
+        """Handle errors when fetching model information."""
+        # Check if operation was cancelled before showing error
+        if (hasattr(self, 'model_loading_cancelled') and self.model_loading_cancelled and 
+            getattr(self, 'current_loading_model', '') != model_name):
+            return
+            
+        short_name = model_name.split(':')[0] if ':' in model_name else model_name
+        
+        self.model_status = "Error"
+        self.model_detail_lines[0].config(text="Model status: Error", foreground="red")
+        self.model_detail_lines[1].config(text=f"Selected model: {short_name}", foreground="green")
+        
+        # Keep chat disabled on error
+        self.user_input.config(state='disabled')
+        self.send_button.config(state='disabled')
+        
+        # Clear model data lines
+        self.model_detail_lines[2].config(text="", foreground="green")
+        self.model_detail_lines[3].config(text="", foreground="green") 
+        self.model_detail_lines[4].config(text="", foreground="green")
+        self.model_detail_lines[5].config(text="", foreground="green")
+        
+        # Log the error for debugging
+        self.show_status_message(f"Error fetching model info: {error_msg}")
 
     def preload_model(self, model_name):
         """Pre-load the model to make it ready for immediate use."""
         try:
+            # Check if operation was cancelled before starting
+            if (hasattr(self, 'model_loading_cancelled') and self.model_loading_cancelled and 
+                getattr(self, 'current_loading_model', '') != model_name):
+                return
+            
+            # Determine timeout based on model size - larger models need more time
+            timeout = 30  # Default timeout
+            model_lower = model_name.lower()
+            if any(size in model_lower for size in ['70b', '72b', '405b']):
+                timeout = 120  # 2 minutes for very large models
+            elif any(size in model_lower for size in ['13b', '14b', '27b', '30b', '34b']):
+                timeout = 90   # 1.5 minutes for large models
+            elif any(size in model_lower for size in ['7b', '8b', '9b']):
+                timeout = 60   # 1 minute for medium models
+            
+            # Show loading status with timeout info for user awareness
+            if timeout > 30:
+                self.root.after(0, lambda: self.show_status_message(f"Loading large model '{model_name}' (may take up to {timeout//60} minute{'s' if timeout > 60 else ''}...)"))
+                
             # Send a simple query to load the model
             result = subprocess.run([self.ollama_path, "run", model_name, "Hello"], 
-                                  capture_output=True, text=True, timeout=30)
+                                  capture_output=True, text=True, timeout=timeout)
+            
+            # Check if operation was cancelled during preload
+            if (hasattr(self, 'model_loading_cancelled') and self.model_loading_cancelled and 
+                getattr(self, 'current_loading_model', '') != model_name):
+                return
             
             if result.returncode == 0:
                 self.root.after(0, lambda: self.show_status_message(f"✅ Model '{model_name}' loaded successfully!"))
-                # Update model details to show new usage information after loading
-                self.root.after(0, lambda: self.update_model_details(model_name, loading=False))
+                # Update model details asynchronously after loading (only if not cancelled)
+                if (not getattr(self, 'model_loading_cancelled', False) or 
+                    getattr(self, 'current_loading_model', '') == model_name):
+                    self.root.after(0, lambda: self.update_model_details_safe(model_name, loading=False))
             else:
                 self.root.after(0, lambda: self.show_status_message(f"⚠️ Model '{model_name}' loaded with warnings."))
-                # Still update details as model might be partially loaded
-                self.root.after(0, lambda: self.update_model_details(model_name, loading=False))
+                # Still update details as model might be partially loaded (only if not cancelled)
+                if (not getattr(self, 'model_loading_cancelled', False) or 
+                    getattr(self, 'current_loading_model', '') == model_name):
+                    self.root.after(0, lambda: self.update_model_details_safe(model_name, loading=False))
                 
+        except subprocess.TimeoutExpired:
+            # Handle timeout specifically with helpful message
+            if (not getattr(self, 'model_loading_cancelled', False) or 
+                getattr(self, 'current_loading_model', '') == model_name):
+                self.root.after(0, lambda: self.show_status_message(f"⏰ Model '{model_name}' is taking longer to load than expected. It may still be loading in the background."))
+                # Still try to update details - model might be partially loaded and usable
+                self.root.after(0, lambda: self.update_model_details_safe(model_name, loading=False))
         except Exception as e:
-            self.root.after(0, lambda: self.show_status_message(f"Error loading model: {str(e)}"))
-            # Still try to update details
-            self.root.after(0, lambda: self.update_model_details(model_name, loading=False))
+            # Only show error if operation wasn't cancelled
+            if (not getattr(self, 'model_loading_cancelled', False) or 
+                getattr(self, 'current_loading_model', '') == model_name):
+                # More user-friendly error message for timeouts
+                if "timed out" in str(e).lower():
+                    self.root.after(0, lambda: self.show_status_message(f"⏰ Model '{model_name}' is taking longer to load. Large models may need extra time. Try again or check if model is loading in background."))
+                else:
+                    self.root.after(0, lambda: self.show_status_message(f"Error loading model: {str(e)}"))
+                # Mark model as error state - this will now be handled asynchronously
+                self.root.after(0, lambda: self.update_model_details_safe(model_name, loading=False))
 
     def show_status_message(self, message):
         """Show a status message in the logs display.
@@ -2792,41 +3124,119 @@ Once installed, click 'Refresh' in the main application to detect models.
         if self.is_generating:
             self.stop_generation()
         
+        # If we're currently loading a different model, cancel any pending operations
+        if hasattr(self, 'model_loading_cancelled'):
+            self.model_loading_cancelled = True
+        
+        # Set flag to track current model loading operation
+        self.model_loading_cancelled = False
+        self.current_loading_model = selected
+        
         self.selected_model = selected
         
         # Reset conversation history for new model
         self.reset_conversation_history()
         
+        # Immediately reset model state to prevent conflicts
+        self.model_status = "Loading"
+        
         # Show loading state immediately
         self.update_model_details(selected, loading=True)
         
-        # Clear chat display and show welcome message
+        # Clear chat display and show loading message with time estimate
         self.chat_display.config(state='normal')
         self.chat_display.delete(1.0, tk.END)
-        self.chat_display.insert(tk.END, f"✅ Model '{selected}' is ready for chat!\n")
-        self.chat_display.insert(tk.END, "� Type your message in the input field below and press Enter or click Send.\n\n")
+        
+        # Provide time estimate based on model size
+        model_lower = selected.lower()
+        time_estimate = ""
+        if any(size in model_lower for size in ['70b', '72b', '405b']):
+            time_estimate = " (Large model - may take 1-2 minutes)"
+        elif any(size in model_lower for size in ['13b', '14b', '27b', '30b', '34b']):
+            time_estimate = " (Large model - may take 60-90 seconds)"
+        elif any(size in model_lower for size in ['7b', '8b', '9b']):
+            time_estimate = " (May take up to 1 minute)"
+        
+        self.chat_display.insert(tk.END, f"⏳ Loading model '{selected}'{time_estimate}...\n")
+        self.chat_display.insert(tk.END, "Please wait while the model is being prepared for use.\n")
+        if time_estimate:
+            self.chat_display.insert(tk.END, "Large models require more time to initialize.\n")
+        self.chat_display.insert(tk.END, "\n")
         self.chat_display.config(state='disabled')
         
-        # Clear input field and enable it
+        # Clear input field while ensuring it stays disabled during loading
+        # Temporarily enable to clear content, then immediately disable
+        current_state = str(self.user_input.cget('state'))
         self.user_input.config(state='normal')
         self.user_input.delete("1.0", tk.END)
-        self.user_input.focus()
+        self.user_input.config(state='disabled')  # Ensure it's disabled during loading
         
-        # Enable send button
-        self.send_button.config(state='normal')
+        # Keep send button disabled during loading
+        self.send_button.config(state='disabled')
         
         # Pre-load the model and update details in background
-        self.show_status_message(f"Loading model '{selected}'...")
+        # Show appropriate loading message based on model size
+        model_lower = selected.lower()
+        if any(size in model_lower for size in ['70b', '72b', '405b']):
+            self.show_status_message(f"Loading large model '{selected}' (may take 1-2 minutes)...")
+        elif any(size in model_lower for size in ['13b', '14b', '27b', '30b', '34b']):
+            self.show_status_message(f"Loading large model '{selected}' (may take 60-90 seconds)...")
+        else:
+            self.show_status_message(f"Loading model '{selected}'...")
         
         def load_model_info():
+            # Check if this operation was cancelled (user switched to another model)
+            if getattr(self, 'model_loading_cancelled', False) or getattr(self, 'current_loading_model', '') != selected:
+                return
+                
             # Small delay to make loading state visible
             time.sleep(0.2)
+            
+            # Check again if cancelled
+            if getattr(self, 'model_loading_cancelled', False) or getattr(self, 'current_loading_model', '') != selected:
+                return
+                
             # Get the actual model information
-            self.root.after(0, lambda: self.update_model_details(selected, loading=False))
+            self.root.after(0, lambda: self.update_model_details_safe(selected, loading=False))
+            
             # Then preload the model
-            self.preload_model(selected)
+            self.preload_model_safe(selected)
         
         threading.Thread(target=load_model_info, daemon=True).start()
+    
+    def update_model_details_safe(self, model_name, loading=False):
+        """Safe wrapper for update_model_details that checks for cancellation."""
+        # Only proceed if this is still the current model being loaded
+        if (not getattr(self, 'model_loading_cancelled', False) and 
+            getattr(self, 'current_loading_model', '') == model_name):
+            self.update_model_details(model_name, loading=loading)
+    
+    def preload_model_safe(self, model_name):
+        """Safe wrapper for preload_model that checks for cancellation."""
+        # Only proceed if this is still the current model being loaded
+        if (not getattr(self, 'model_loading_cancelled', False) and 
+            getattr(self, 'current_loading_model', '') == model_name):
+            self.preload_model(model_name)
+    
+    def update_chat_for_ready_model(self, model_name):
+        """Update chat display when model is ready for use."""
+        # Check if operation was cancelled or model switched
+        if (hasattr(self, 'model_loading_cancelled') and self.model_loading_cancelled and 
+            getattr(self, 'current_loading_model', '') != model_name):
+            return
+            
+        # Only update if this is still the selected model and it's ready
+        if (hasattr(self, 'model_status') and self.model_status == "Ready" and 
+            hasattr(self, 'selected_model') and self.selected_model == model_name):
+            # Update chat display with ready message
+            self.chat_display.config(state='normal')
+            self.chat_display.delete(1.0, tk.END)
+            self.chat_display.insert(tk.END, f"✅ Model '{model_name}' is ready for chat!\n")
+            self.chat_display.insert(tk.END, "💬 Type your message in the input field below and press Ctrl+Enter or click Send.\n\n")
+            self.chat_display.config(state='disabled')
+            
+            # Focus on input field
+            self.user_input.focus()
 
     def stop_generation(self):
         """Stop the current model response generation."""
@@ -2916,9 +3326,26 @@ Once installed, click 'Refresh' in the main application to detect models.
             self.show_status_message("⚠️ Please choose a model first using the 'Choose Model' button.")
             return
         
+        # Check model status before allowing message sending
+        if hasattr(self, 'model_status') and self.model_status != "Ready":
+            if self.model_status == "Loading":
+                self.show_status_message("⚠️ Model is still loading. Please wait for the model to be ready.")
+            elif self.model_status == "Error":
+                self.show_status_message("⚠️ Model has an error. Please try selecting the model again.")
+            else:
+                self.show_status_message("⚠️ Please wait for the model to be ready before sending messages.")
+            return
+        
+        # Double-check that model is actually loaded and ready
+        if not self.is_model_loaded_basic(self.selected_model):
+            self.show_status_message("⚠️ Model is not fully loaded yet. Please wait a moment and try again.")
+            # Trigger a status refresh
+            self.update_model_details_safe(self.selected_model, loading=False)
+            return
+        
         # Check if input field is disabled (shouldn't happen with proper UI state management)
         if str(self.user_input.cget('state')) == 'disabled':
-            self.show_status_message("⚠️ Chat input is currently disabled. Please select a model.")
+            self.show_status_message("⚠️ Chat input is currently disabled. Please wait for model to be ready.")
             return
         
         # Get user input from the input field
