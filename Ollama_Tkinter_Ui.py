@@ -3712,7 +3712,7 @@ Once installed, click 'Refresh' in the main application to detect models.
             
             # UI preferences
             'window_geometry': '1400x900',
-            'mode': 'chat'  # 'chat' or 'translator'
+            'mode': 'chat'  # Always starts in chat mode (not restored from settings)
         }
     
     def save_settings(self):
@@ -3790,11 +3790,11 @@ Once installed, click 'Refresh' in the main application to detect models.
             if window_geometry:
                 self.root.geometry(window_geometry)
             
-            # Mode setting - restore after UI is fully initialized
-            saved_mode = settings.get('mode', defaults['mode'])
-            if saved_mode == 'translator':
-                # Schedule mode switch after UI is ready
-                self.root.after(100, self.switch_to_translator_mode)
+            # Mode setting - Always start in Chat mode (don't restore saved mode)
+            # saved_mode = settings.get('mode', defaults['mode'])
+            # if saved_mode == 'translator':
+            #     # Schedule mode switch after UI is ready
+            #     self.root.after(100, self.switch_to_translator_mode)
             
             # Model selection - restore after models are loaded
             saved_model = settings.get('selected_model', '')
