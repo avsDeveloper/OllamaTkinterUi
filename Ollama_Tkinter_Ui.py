@@ -86,8 +86,9 @@ class OllamaGUI:
         self.model_dropdown = ttk.Combobox(model_frame, textvariable=self.model_var, width=25, state="readonly")
         self.model_dropdown.pack(fill=tk.X, pady=(0, 5))
         
-        # Bind model dropdown selection to automatically choose the model
-        self.model_dropdown.bind('<<ComboboxSelected>>', lambda e: self.choose_model())
+        # Don't bind automatic selection to dropdown - user must click Choose Model button
+        # Just ensure we save the selection in case the app closes
+        self.model_dropdown.bind('<<ComboboxSelected>>', lambda e: self.save_settings())
         
         buttons_frame = ttk.Frame(model_frame)
         buttons_frame.pack(fill=tk.X)
