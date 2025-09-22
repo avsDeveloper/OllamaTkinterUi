@@ -3072,6 +3072,36 @@ Once installed, click 'Refresh' in the main application to detect models.
             self.user_input.config(state='normal')
             self.send_button.config(state='normal')
             
+            # Display model information
+            # Set color based on content - blue for loading/unknown, green for actual data
+            size_color = "#1976D2" if model_info['size'] in ["Unknown", "Loading...", "Error"] else "green"
+            ram_color = "#1976D2" if model_info['ram_usage'] in ["Unknown", "Loading...", "Error", "Not loaded"] else "green"
+            usage_color = "#1976D2" if model_info['gpu_cpu_usage'] in ["Unknown", "Loading...", "Error", "0%/0%"] else "green"
+            context_color = "#1976D2" if model_info['context'] in ["Unknown", "Loading...", "Error"] else "green"
+            
+            loading_note = self.get_loading_attempts_note(model_name)
+            self.model_detail_lines[2].config(text=f"Model size: {model_info['size']}{loading_note}", foreground=size_color)
+            self.model_detail_lines[3].config(text=f"RAM usage: {model_info['ram_usage']}", foreground=ram_color)
+            self.model_detail_lines[4].config(text=f"CPU/GPU usage: {model_info['gpu_cpu_usage']}", foreground=usage_color)
+            self.model_detail_lines[5].config(text=f"Context size: {model_info['context']}", foreground=context_color)
+            
+            # Extract and store max context tokens for token counter
+            context_str = model_info['context']
+            if context_str not in ["Unknown", "Loading...", "Error"]:
+                try:
+                    # Extract the numeric part from the context size string (e.g. "8192 tokens" -> 8192)
+                    if "tokens" in context_str.lower():
+                        self.max_context_tokens = int(context_str.lower().split("tokens")[0].strip())
+                    else:
+                        self.max_context_tokens = int(''.join(c for c in context_str if c.isdigit()))
+                except (ValueError, AttributeError):
+                    self.max_context_tokens = 4096  # Default if parsing fails
+            else:
+                self.max_context_tokens = 4096  # Default fallback
+                
+            # Update token counter display
+            self.update_token_counter()
+            
             # Update chat display to show model is ready
             self.update_chat_for_ready_model(model_name)
         # Special case for small models - if we have basic info but not full verification,
@@ -3092,6 +3122,36 @@ Once installed, click 'Refresh' in the main application to detect models.
                 # Enable chat for small models even with limited verification
                 self.user_input.config(state='normal')
                 self.send_button.config(state='normal')
+                
+                # Display model information
+                # Set color based on content - blue for loading/unknown, green for actual data
+                size_color = "#1976D2" if model_info['size'] in ["Unknown", "Loading...", "Error"] else "green"
+                ram_color = "#1976D2" if model_info['ram_usage'] in ["Unknown", "Loading...", "Error", "Not loaded"] else "green"
+                usage_color = "#1976D2" if model_info['gpu_cpu_usage'] in ["Unknown", "Loading...", "Error", "0%/0%"] else "green"
+                context_color = "#1976D2" if model_info['context'] in ["Unknown", "Loading...", "Error"] else "green"
+                
+                loading_note = self.get_loading_attempts_note(model_name)
+                self.model_detail_lines[2].config(text=f"Model size: {model_info['size']}{loading_note}", foreground=size_color)
+                self.model_detail_lines[3].config(text=f"RAM usage: {model_info['ram_usage']}", foreground=ram_color)
+                self.model_detail_lines[4].config(text=f"CPU/GPU usage: {model_info['gpu_cpu_usage']}", foreground=usage_color)
+                self.model_detail_lines[5].config(text=f"Context size: {model_info['context']}", foreground=context_color)
+                
+                # Extract and store max context tokens for token counter
+                context_str = model_info['context']
+                if context_str not in ["Unknown", "Loading...", "Error"]:
+                    try:
+                        # Extract the numeric part from the context size string
+                        if "tokens" in context_str.lower():
+                            self.max_context_tokens = int(context_str.lower().split("tokens")[0].strip())
+                        else:
+                            self.max_context_tokens = int(''.join(c for c in context_str if c.isdigit()))
+                    except (ValueError, AttributeError):
+                        self.max_context_tokens = 4096  # Default if parsing fails
+                else:
+                    self.max_context_tokens = 4096  # Default fallback
+                    
+                # Update token counter display
+                self.update_token_counter()
                 
                 # Update chat display
                 self.update_chat_for_ready_model(model_name)
@@ -3128,7 +3188,8 @@ Once installed, click 'Refresh' in the main application to detect models.
             usage_color = "#1976D2" if model_info['gpu_cpu_usage'] in ["Unknown", "Loading...", "Error", "0%/0%"] else "green"
             context_color = "#1976D2" if model_info['context'] in ["Unknown", "Loading...", "Error"] else "green"
             
-            self.model_detail_lines[2].config(text=f"Model size: {model_info['size']}", foreground=size_color)
+            loading_note = self.get_loading_attempts_note(model_name)
+            self.model_detail_lines[2].config(text=f"Model size: {model_info['size']}{loading_note}", foreground=size_color)
             self.model_detail_lines[3].config(text=f"RAM usage: {model_info['ram_usage']}", foreground=ram_color)
             self.model_detail_lines[4].config(text=f"CPU/GPU usage: {model_info['gpu_cpu_usage']}", foreground=usage_color)
             self.model_detail_lines[5].config(text=f"Context size: {model_info['context']}", foreground=context_color)
@@ -3239,20 +3300,83 @@ Once installed, click 'Refresh' in the main application to detect models.
             self.preloading_model = True
             
             # Determine timeout based on model size - larger models need more time
-            timeout = 30  # Default timeout
+            timeout = 45  # Increased default timeout for all models
             model_lower = model_name.lower()
             if any(size in model_lower for size in ['70b', '72b', '405b']):
-                timeout = 120  # 2 minutes for very large models
+                timeout = 180  # 3 minutes for very large models
             elif any(size in model_lower for size in ['13b', '14b', '27b', '30b', '34b']):
-                timeout = 90   # 1.5 minutes for large models
+                timeout = 120  # 2 minutes for large models
             elif any(size in model_lower for size in ['7b', '8b', '9b']):
-                timeout = 60   # 1 minute for medium models
+                timeout = 90   # 1.5 minutes for medium models
+            
+            # Check if this is a small model - special handling for faster loading
+            is_small_model = not any(size in model_lower for size in ['70b', '72b', '405b', '13b', '14b', '27b', '30b', '34b', '7b', '8b', '9b'])
+            
+            # For slower machines or cold starts, we need to be more patient
+            # Check if we need to try a different approach for loading
+            is_first_attempt = not hasattr(self, '_model_load_attempts')
+            if not is_first_attempt:
+                if model_name not in self._model_load_attempts:
+                    self._model_load_attempts[model_name] = 1
+                else:
+                    # Increase timeout for subsequent attempts
+                    self._model_load_attempts[model_name] += 1
+                    timeout = min(timeout * self._model_load_attempts[model_name], 300)  # Max 5 minutes
+            else:
+                self._model_load_attempts = {}
+                self._model_load_attempts[model_name] = 1
+                
+            # Display loading attempts in status message for user awareness
+            attempt_str = ""
+            if self._model_load_attempts[model_name] > 1:
+                attempt_str = f" (Attempt {self._model_load_attempts[model_name]})"
+                
+            # For small models, we'll use a quicker approach
+            if is_small_model:
+                self.root.after(0, lambda: self.show_status_message(f"Small model '{model_name}' detected, using optimized loading approach..."))
+                # Don't need extended timeouts for small models
+                timeout = min(timeout, 60)
             
             # Show loading status with timeout info for user awareness
-            if timeout > 30:
-                self.root.after(0, lambda: self.show_status_message(f"Loading large model '{model_name}' (may take up to {timeout//60} minute{'s' if timeout > 60 else ''}...)"))
+            if timeout > 60:
+                self.root.after(0, lambda: self.show_status_message(f"Loading model '{model_name}'{attempt_str} (may take up to {timeout//60} minute{'s' if timeout > 60 else ''}...)"))
+            else:
+                self.root.after(0, lambda: self.show_status_message(f"Loading model '{model_name}'{attempt_str} (may take up to {timeout} seconds)..."))
+            
+            # Try a simpler approach first for faster loading
+            try:
+                # First try with a simple ollama show to check if model is ready
+                self.root.after(0, lambda: self.show_status_message(f"Checking if model '{model_name}' is already available..."))
+                show_result = subprocess.run([self.ollama_path, "show", model_name], 
+                                          capture_output=True, text=True, timeout=10)
                 
-            # First, ensure the model is properly pulled and loaded with ollama run
+                if show_result.returncode == 0 and show_result.stdout.strip():
+                    # Model seems to be available, try a short warmup prompt
+                    warmup_prompt = "hi"
+                    self.root.after(0, lambda: self.show_status_message(f"Sending a quick test message to '{model_name}'..."))
+                    
+                    quick_result = subprocess.run([self.ollama_path, "run", model_name, warmup_prompt], 
+                                              capture_output=True, text=True, timeout=30)
+                    
+                    if quick_result.returncode == 0:
+                        # Model is ready without full initialization
+                        self.root.after(0, lambda: self.show_status_message(f"✅ Model '{model_name}' is ready for use"))
+                        # Set our variable and return early
+                        self.preloaded_models[model_name] = time.time()
+                        self.preload_success_models.add(model_name)
+                        self.preloading_model = False
+                        
+                        # Get model info
+                        model_info = self.get_model_info(model_name)
+                        if model_info:
+                            self.root.after(0, lambda: self.update_model_info_display(model_name, model_info, loading=False))
+                            self.root.after(0, lambda: self.enable_chat_for_loaded_model(model_name))
+                        return
+            except Exception as e:
+                # Continue with full initialization if quick check fails
+                self.root.after(0, lambda: self.show_status_message(f"Quick check for '{model_name}' didn't work, proceeding with full initialization..."))
+            
+            # If we got here, the quick check didn't work - proceed with full initialization
             # We use a more substantial prompt to ensure the model is fully loaded and ready for inference
             warmup_prompt = "Please respond with a single word: 'Ready'. This query is to ensure you're fully loaded."
             
@@ -3283,6 +3407,12 @@ Once installed, click 'Refresh' in the main application to detect models.
                 # Get the model info directly
                 try:
                     model_info = self.get_model_info(model_name)
+                    
+                    # Add loading attempt info to model info
+                    if hasattr(self, '_model_load_attempts') and model_name in self._model_load_attempts:
+                        attempt_count = self._model_load_attempts[model_name]
+                        if attempt_count > 1:  # Only show if there were multiple attempts
+                            model_info['loading_note'] = f"(Loaded after {attempt_count} attempt{'s' if attempt_count > 1 else ''})"
                     
                     # Update UI only if we got meaningful model info and operation wasn't cancelled
                     if (model_info and model_info.get('ram_usage') not in ['Unknown', 'Error'] and 
@@ -3332,26 +3462,119 @@ Once installed, click 'Refresh' in the main application to detect models.
                 self.preloading_model = False
                 
         except subprocess.TimeoutExpired:
-            # Reset preloading flag
+            # Reset preloading flag but keep track of attempt
             self.preloading_model = False
-            # Handle timeout specifically with helpful message
-            if (not getattr(self, 'model_loading_cancelled', False) or 
-                getattr(self, 'current_loading_model', '') == model_name):
-                self.root.after(0, lambda: self.show_status_message(f"⏰ Model '{model_name}' is taking longer to load than expected. It may still be loading in the background."))
-                # Still try to update details - model might be partially loaded and usable
-                self.root.after(0, lambda: self.update_model_details_safe(model_name, loading=False))
+            
+            # Track timeout attempt
+            if not hasattr(self, '_model_timeout_attempts'):
+                self._model_timeout_attempts = {}
+            
+            if model_name not in self._model_timeout_attempts:
+                self._model_timeout_attempts[model_name] = 1
+            else:
+                self._model_timeout_attempts[model_name] += 1
+            
+            # Check if we should still keep trying
+            if self._model_timeout_attempts[model_name] <= 3:
+                # Try alternate loading strategy on timeout
+                if (not getattr(self, 'model_loading_cancelled', False) or 
+                    getattr(self, 'current_loading_model', '') == model_name):
+                    self.root.after(0, lambda: self.show_status_message(f"⏰ Model '{model_name}' loading timed out. Trying alternate loading method ({self._model_timeout_attempts[model_name]}/3)..."))
+                    
+                    # Try with simpler prompt approach
+                    try:
+                        # See if model is at least accessible via show
+                        show_result = subprocess.run([self.ollama_path, "show", model_name], 
+                                                  capture_output=True, text=True, timeout=10)
+                        
+                        if show_result.returncode == 0:
+                            # Model exists, mark as loaded with warnings
+                            self.root.after(0, lambda: self.show_status_message(f"Model '{model_name}' is available but loading timed out. Will proceed with limited functionality."))
+                            
+                            # Still register it as available
+                            if not hasattr(self, 'preloaded_models'):
+                                self.preloaded_models = {}
+                            if not hasattr(self, 'preload_success_models'):
+                                self.preload_success_models = set()
+                            self.preloaded_models[model_name] = time.time()
+                            self.preload_success_models.add(model_name)
+                            
+                            # Get model info and enable chat
+                            model_info = self.get_model_info(model_name)
+                            if model_info:
+                                self.root.after(0, lambda: self.update_model_info_display(model_name, model_info))
+                                self.root.after(0, lambda: self.enable_chat_for_loaded_model(model_name))
+                    except Exception:
+                        # If all else fails, retry with increased timeout
+                        self.root.after(0, lambda: self.show_status_message(f"Retrying '{model_name}' load with increased timeout..."))
+                        # Schedule a new attempt with increased timeout
+                        self.root.after(1000, lambda: threading.Thread(
+                            target=self.preload_model, 
+                            args=(model_name,), 
+                            daemon=True
+                        ).start())
+            else:
+                # After multiple timeouts, try to make the best of it
+                if (not getattr(self, 'model_loading_cancelled', False) or 
+                    getattr(self, 'current_loading_model', '') == model_name):
+                    self.root.after(0, lambda: self.show_status_message(f"⚠️ Model '{model_name}' keeps timing out. Will try to use it anyway with limited verification."))
+                    
+                    # Even after timeout, mark as potentially usable
+                    if not hasattr(self, 'preloaded_models'):
+                        self.preloaded_models = {}
+                    self.preloaded_models[model_name] = time.time()
+                    
+                    # Don't add to preload_success_models to maintain accurate tracking
+                    # But still try to update UI
+                    self.root.after(0, lambda: self.update_model_details_safe(model_name, loading=False))
+                    
         except Exception as e:
             # Reset preloading flag
             self.preloading_model = False
+            
             # Only show error if operation wasn't cancelled
             if (not getattr(self, 'model_loading_cancelled', False) or 
                 getattr(self, 'current_loading_model', '') == model_name):
-                # More user-friendly error message for timeouts
+                
+                # More user-friendly error message based on error type
                 if "timed out" in str(e).lower():
-                    self.root.after(0, lambda: self.show_status_message(f"⏰ Model '{model_name}' is taking longer to load. Large models may need extra time. Try again or check if model is loading in background."))
+                    self.root.after(0, lambda: self.show_status_message(f"⏰ Model '{model_name}' is taking longer to load. Will try a different approach."))
+                    
+                    # Try with ollama show as a fallback
+                    try:
+                        show_result = subprocess.run([self.ollama_path, "show", model_name], 
+                                                  capture_output=True, text=True, timeout=10)
+                        
+                        if show_result.returncode == 0:
+                            # Model exists, mark as loaded with limited verification
+                            self.root.after(0, lambda: self.show_status_message(f"Model '{model_name}' is available with limited functionality."))
+                            
+                            # Still register it as available
+                            if not hasattr(self, 'preloaded_models'):
+                                self.preloaded_models = {}
+                            self.preloaded_models[model_name] = time.time()
+                            
+                            # Get model info and try to update UI
+                            model_info = self.get_model_info(model_name)
+                            if model_info:
+                                # Add an indicator of loading attempts to the model info
+                                attempt_count = 0
+                                if hasattr(self, '_model_load_attempts') and model_name in self._model_load_attempts:
+                                    attempt_count = self._model_load_attempts[model_name]
+                                if attempt_count > 0:
+                                    model_info['loading_note'] = f"(Loaded after {attempt_count} attempt{'s' if attempt_count > 1 else ''})"
+                                
+                                self.root.after(0, lambda: self.update_model_info_display(model_name, model_info))
+                    except Exception:
+                        pass
                 else:
-                    self.root.after(0, lambda: self.show_status_message(f"Error loading model: {str(e)}"))
-                # Mark model as error state - this will now be handled asynchronously
+                    error_msg = str(e)
+                    # Truncate error message if too long
+                    if len(error_msg) > 100:
+                        error_msg = error_msg[:97] + "..."
+                    self.root.after(0, lambda: self.show_status_message(f"Error loading model: {error_msg}"))
+                
+                # Still try to update details even after error - model might be partially functional
                 self.root.after(0, lambda: self.update_model_details_safe(model_name, loading=False))
 
     def show_status_message(self, message):
