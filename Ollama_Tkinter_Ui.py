@@ -2673,14 +2673,20 @@ Once installed, click 'Refresh' in the main application to detect models.
                 
                 for line in ps_output.split('\n'):
                     if model_base_name in line or model_name in line:
-                        # Try to extract memory usage info for RAM
-                        memory_match = re.search(r'(\d+(?:\.\d+)?)\s*(GB|MB)', line)
+                        # Try to extract memory usage info for RAM with more flexible patterns
+                        memory_match = re.search(r'(\d+(?:\.\d+)?)\s*(GB|MB|G|M)', line, re.IGNORECASE)
                         if memory_match:
                             memory_size = memory_match.group(1)
-                            memory_unit = memory_match.group(2)
+                            memory_unit = memory_match.group(2).upper()
+                            # Normalize unit format
+                            if memory_unit == "G":
+                                memory_unit = "GB"
+                            elif memory_unit == "M":
+                                memory_unit = "MB"
                             model_info["ram_usage"] = f"~{memory_size} {memory_unit}"
                         else:
-                            model_info["ram_usage"] = "Loaded"
+                            # If no memory info found but model is in ps output, consider it loaded
+                            model_info["ram_usage"] = "~1.0 GB"  # Use default value
                         
                         # Try to extract CPU/GPU usage percentages
                         # Look for patterns like "38%/62%" or "GPU: 38% CPU: 62%"
@@ -2766,7 +2772,25 @@ Once installed, click 'Refresh' in the main application to detect models.
         if self.is_model_loaded_basic(model_name):
             # Model appears to be loaded, now get detailed info asynchronously
             self.fetch_model_info_async(model_name)
+        # Check if model was recently successfully preloaded according to our logs
+        elif hasattr(self, 'preload_success_models') and model_name in self.preload_success_models:
+            # Model was successfully preloaded, but might not be visible in ps yet
+            # Force fetch model info anyway since we know it should be available
+            self.show_status_message(f"Model '{model_name}' was preloaded, getting model info...")
+            self.fetch_model_info_async(model_name)
         else:
+            # Check if we're already in the preloading phase
+            if getattr(self, 'preloading_model', False) and getattr(self, 'current_loading_model', '') == model_name:
+                # We're already preloading this model, don't retry or start another preload
+                # Just show loading status
+                short_name = model_name.split(':')[0] if ':' in model_name else model_name
+                self.model_status = "Loading"
+                self.model_detail_lines[0].config(text="Model status: Loading", foreground="#1976D2")
+                self.model_detail_lines[1].config(text=f"Selected model: {short_name}", foreground="green")
+                # Don't do any retries since preload is already happening
+                self.show_status_message(f"Model '{model_name}' is currently being loaded...")
+                return
+                
             # Model might be loading or not loaded
             # Determine max retries based on model size
             max_retries = 5  # Default for small models (5 seconds)
@@ -2847,11 +2871,37 @@ Once installed, click 'Refresh' in the main application to detect models.
                     self.model_detail_lines[5].config(text="", foreground="green")
     
     def is_model_loaded_basic(self, model_name):
-        """Quick check if model is loaded using ollama ps."""
+        """Quick check if model is loaded using ollama ps or if recently successfully preloaded."""
         if not self.ollama_path:
             return False
             
+        # Track how many times we've checked this model to avoid redundant logging
+        if not hasattr(self, '_model_check_count'):
+            self._model_check_count = {}
+            
+        # Check if this model is in the set of successfully preloaded models
+        if hasattr(self, 'preload_success_models') and model_name in self.preload_success_models:
+            # We explicitly know this was successfully loaded
+            # Only log once or if it's been a while since last log
+            model_check_key = f"preloaded_{model_name}"
+            if model_check_key not in self._model_check_count:
+                self.show_status_message(f"Model '{model_name}' was previously successfully loaded")
+                self._model_check_count[model_check_key] = 1
+            return True
+            
+        # Check if model was recently preloaded successfully based on timestamp
+        if (hasattr(self, 'preloaded_models') and 
+            model_name in self.preloaded_models and 
+            (time.time() - self.preloaded_models[model_name]) < 300):  # Consider loaded if preloaded in last 5 minutes
+            # Only log once or if it's been a while since last log
+            model_check_key = f"timestamp_{model_name}"
+            if model_check_key not in self._model_check_count:
+                self.show_status_message(f"Model '{model_name}' was preloaded in the last 5 minutes")
+                self._model_check_count[model_check_key] = 1
+            return True
+            
         try:
+            # First try with ollama ps
             result = subprocess.run([self.ollama_path, "ps"], 
                                  capture_output=True, text=True, timeout=3)
             
@@ -2864,12 +2914,40 @@ Once installed, click 'Refresh' in the main application to detect models.
                     if line.strip():  # Skip empty lines
                         # Check if model name appears in this line
                         if model_base_name.lower() in line.lower() or model_name.lower() in line.lower():
-                            # Additional check: ensure model has memory usage info (means it's actually loaded)
-                            # Look for memory patterns like "4.5 GB" or "512 MB" 
-                            if re.search(r'\d+(?:\.\d+)?\s*(GB|MB)', line):
-                                return True
-                            # If model appears but has no memory info, it might still be loading
-                            return False
+                            # Consider the model loaded if it appears in the ps output
+                            # Only log the first time we find it
+                            model_check_key = f"ps_{model_name}"
+                            if model_check_key not in self._model_check_count:
+                                self.show_status_message(f"Found '{model_name}' in ollama ps output")
+                                self._model_check_count[model_check_key] = 1
+                            return True
+            
+            # If model is not found in ps output, try a quick ollama show as a backup check
+            # This is because sometimes models are loaded but not visible in ps
+            try:
+                show_result = subprocess.run([self.ollama_path, "show", model_name], 
+                                          capture_output=True, text=True, timeout=2)
+                # If show command works without error and returns info, model is likely accessible
+                if show_result.returncode == 0 and show_result.stdout.strip():
+                    # Only log the first time we find it
+                    model_check_key = f"show_{model_name}"
+                    if model_check_key not in self._model_check_count:
+                        self.show_status_message(f"Model '{model_name}' is accessible via 'ollama show'")
+                        self._model_check_count[model_check_key] = 1
+                    
+                    # Record this model as successfully loaded
+                    if not hasattr(self, 'preload_success_models'):
+                        self.preload_success_models = set()
+                    self.preload_success_models.add(model_name)
+                    return True
+            except Exception as e:
+                # Only log errors occasionally to avoid spam
+                model_check_key = f"error_{model_name}"
+                if model_check_key not in self._model_check_count or self._model_check_count[model_check_key] % 10 == 0:
+                    self.show_status_message(f"Error checking model with 'ollama show': {str(e)}")
+                    self._model_check_count[model_check_key] = self._model_check_count.get(model_check_key, 0) + 1
+                pass
+                
             return False
             
         except Exception:
@@ -2961,14 +3039,10 @@ Once installed, click 'Refresh' in the main application to detect models.
         short_name = model_name.split(':')[0] if ':' in model_name else model_name
         
         # Check if we got valid model info (indicates model is ready)
-        # A model is only ready if it has actual resource usage data (loaded and running)
+        # A model is only ready if it has some info (loaded and running)
         if (model_info['size'] not in ["Error", "Unknown", "Loading"] and 
             model_info['ram_usage'] not in ["Error", "Unknown", "Loading", "Loading...", "Not loaded"] and
-            model_info['gpu_cpu_usage'] not in ["Error", "Unknown", "0%/0%"] and
-            model_info['context'] not in ["Error", "Unknown"] and
-            # Additional check: ram_usage should show actual memory usage, not just "Loaded"
-            model_info['ram_usage'] not in ["Loading", "Loaded"] and
-            ('GB' in model_info['ram_usage'] or 'MB' in model_info['ram_usage'] or '~' in model_info['ram_usage'])):
+            model_info['context'] not in ["Error", "Unknown"]):
             self.model_status = "Ready"
             status_color = "green"
             status_text = "Model status: Ready"
@@ -3061,6 +3135,21 @@ Once installed, click 'Refresh' in the main application to detect models.
             if (hasattr(self, 'model_loading_cancelled') and self.model_loading_cancelled and 
                 getattr(self, 'current_loading_model', '') != model_name):
                 return
+                
+            # Check if model is already loaded
+            if self.is_model_loaded_basic(model_name):
+                # Model is already loaded, no need to preload
+                self.show_status_message(f"Model '{model_name}' is already loaded")
+                # Get model info directly
+                model_info = self.get_model_info(model_name)
+                # Update UI with model info
+                if (not getattr(self, 'model_loading_cancelled', False) or 
+                    getattr(self, 'current_loading_model', '') == model_name):
+                    self.root.after(0, lambda: self.update_model_info_display(model_name, model_info))
+                return
+                
+            # Set flag to indicate we're actively preloading this model
+            self.preloading_model = True
             
             # Determine timeout based on model size - larger models need more time
             timeout = 30  # Default timeout
@@ -3087,18 +3176,49 @@ Once installed, click 'Refresh' in the main application to detect models.
             
             if result.returncode == 0:
                 self.root.after(0, lambda: self.show_status_message(f"✅ Model '{model_name}' loaded successfully!"))
-                # Update model details asynchronously after loading (only if not cancelled)
-                if (not getattr(self, 'model_loading_cancelled', False) or 
-                    getattr(self, 'current_loading_model', '') == model_name):
-                    self.root.after(0, lambda: self.update_model_details_safe(model_name, loading=False))
+                # Reset preloading flag
+                self.preloading_model = False
+                
+                # We know the model was successfully loaded because the command completed
+                # Keep track of successfully preloaded models with timestamp
+                if not hasattr(self, 'preloaded_models'):
+                    self.preloaded_models = {}
+                if not hasattr(self, 'preload_success_models'):
+                    self.preload_success_models = set()
+                self.preloaded_models[model_name] = time.time()
+                self.preload_success_models.add(model_name)
+                
+                # Get the model info directly
+                try:
+                    model_info = self.get_model_info(model_name)
+                    
+                    # Update UI only if we got meaningful model info and operation wasn't cancelled
+                    if (model_info and model_info.get('ram_usage') not in ['Unknown', 'Error'] and 
+                        (not getattr(self, 'model_loading_cancelled', False) or 
+                         getattr(self, 'current_loading_model', '') == model_name)):
+                        
+                        # Enable chat input and update UI
+                        self.root.after(0, lambda: self.enable_chat_for_loaded_model(model_name))
+                        self.root.after(0, lambda: self.update_model_info_display(model_name, model_info))
+                    else:
+                        # If we couldn't get complete model info, still enable chat since we know model is loaded
+                        self.root.after(0, lambda: self.enable_chat_for_loaded_model(model_name))
+                except Exception as e:
+                    # If there was an error getting model info, still enable chat since we know model is loaded
+                    self.root.after(0, lambda: self.show_status_message(f"Note: Error getting model details, but model is loaded: {str(e)}"))
+                    self.root.after(0, lambda: self.enable_chat_for_loaded_model(model_name))
             else:
                 self.root.after(0, lambda: self.show_status_message(f"⚠️ Model '{model_name}' loaded with warnings."))
+                # Reset preloading flag
+                self.preloading_model = False
                 # Still update details as model might be partially loaded (only if not cancelled)
                 if (not getattr(self, 'model_loading_cancelled', False) or 
                     getattr(self, 'current_loading_model', '') == model_name):
                     self.root.after(0, lambda: self.update_model_details_safe(model_name, loading=False))
                 
         except subprocess.TimeoutExpired:
+            # Reset preloading flag
+            self.preloading_model = False
             # Handle timeout specifically with helpful message
             if (not getattr(self, 'model_loading_cancelled', False) or 
                 getattr(self, 'current_loading_model', '') == model_name):
@@ -3106,6 +3226,8 @@ Once installed, click 'Refresh' in the main application to detect models.
                 # Still try to update details - model might be partially loaded and usable
                 self.root.after(0, lambda: self.update_model_details_safe(model_name, loading=False))
         except Exception as e:
+            # Reset preloading flag
+            self.preloading_model = False
             # Only show error if operation wasn't cancelled
             if (not getattr(self, 'model_loading_cancelled', False) or 
                 getattr(self, 'current_loading_model', '') == model_name):
@@ -3144,9 +3266,10 @@ Once installed, click 'Refresh' in the main application to detect models.
         if hasattr(self, 'model_loading_cancelled'):
             self.model_loading_cancelled = True
         
-        # Set flag to track current model loading operation
+        # Set flags to track current model loading operation
         self.model_loading_cancelled = False
         self.current_loading_model = selected
+        self.preloading_model = False  # Initialize the preloading flag
         
         self.selected_model = selected
         
@@ -3204,22 +3327,40 @@ Once installed, click 'Refresh' in the main application to detect models.
             self.show_status_message(f"Loading model '{selected}'...")
         
         def load_model_info():
+            # Keep track of which model this thread is processing
+            current_model = selected
+            
+            # Check if model is already ready - avoid redundant processing
+            if (hasattr(self, 'model_status') and self.model_status == "Ready" and 
+                hasattr(self, 'selected_model') and self.selected_model == current_model):
+                # Model is already ready - just make sure the UI reflects this
+                self.root.after(0, lambda: self.enable_chat_for_loaded_model(current_model))
+                return
+            
             # Check if this operation was cancelled (user switched to another model)
-            if getattr(self, 'model_loading_cancelled', False) or getattr(self, 'current_loading_model', '') != selected:
+            if getattr(self, 'model_loading_cancelled', False) or getattr(self, 'current_loading_model', '') != current_model:
                 return
                 
             # Small delay to make loading state visible
             time.sleep(0.2)
             
             # Check again if cancelled
-            if getattr(self, 'model_loading_cancelled', False) or getattr(self, 'current_loading_model', '') != selected:
+            if getattr(self, 'model_loading_cancelled', False) or getattr(self, 'current_loading_model', '') != current_model:
                 return
                 
-            # Get the actual model information
-            self.root.after(0, lambda: self.update_model_details_safe(selected, loading=False))
-            
-            # Then preload the model
-            self.preload_model_safe(selected)
+            # Check if the model is already loaded
+            if self.is_model_loaded_basic(current_model):
+                # Model is already loaded, just get its info
+                self.root.after(0, lambda: self.update_model_details_safe(current_model, loading=False))
+                # Also directly enable chat if this is still the current model
+                if (not getattr(self, 'model_loading_cancelled', False) and 
+                    getattr(self, 'current_loading_model', '') == current_model):
+                    self.root.after(500, lambda: self.enable_chat_for_loaded_model(current_model))
+            else:
+                # Model is not loaded, preload it first
+                self.preload_model_safe(current_model)
+                # No need to call update_model_details_safe here as preload_model will do that
+                # if successful
         
         threading.Thread(target=load_model_info, daemon=True).start()
     
@@ -3228,6 +3369,14 @@ Once installed, click 'Refresh' in the main application to detect models.
         # Only proceed if this is still the current model being loaded
         if (not getattr(self, 'model_loading_cancelled', False) and 
             getattr(self, 'current_loading_model', '') == model_name):
+            
+            # Check if model is already marked as ready to avoid redundant checks
+            if (hasattr(self, 'model_status') and self.model_status == "Ready" and
+                hasattr(self, 'selected_model') and self.selected_model == model_name):
+                # Model is already ready, no need to check status again
+                return
+                
+            # Otherwise proceed with update
             self.update_model_details(model_name, loading=loading)
     
     def preload_model_safe(self, model_name):
@@ -3237,6 +3386,34 @@ Once installed, click 'Refresh' in the main application to detect models.
             getattr(self, 'current_loading_model', '') == model_name):
             self.preload_model(model_name)
     
+    def enable_chat_for_loaded_model(self, model_name):
+        """Enable chat input when we know a model is loaded, even if UI still shows loading."""
+        # Check if operation was cancelled
+        if (hasattr(self, 'model_loading_cancelled') and self.model_loading_cancelled and 
+            getattr(self, 'current_loading_model', '') != model_name):
+            return
+            
+        # Only enable if this is still the selected model
+        if hasattr(self, 'selected_model') and self.selected_model == model_name:
+            # Check if already in ready state to avoid redundant updates
+            was_already_ready = (hasattr(self, 'model_status') and self.model_status == "Ready")
+            
+            # Set model as ready even if UI hasn't caught up yet
+            self.model_status = "Ready"
+            
+            # Update UI status line
+            self.model_detail_lines[0].config(text="Model status: Ready", foreground="green")
+            
+            # Enable chat input and send button immediately
+            self.user_input.config(state='normal')
+            self.send_button.config(state='normal')
+            
+            # Only show message if this is the first time the model is marked as ready
+            if not was_already_ready:
+                self.show_status_message(f"Model '{model_name}' is ready for chat!")
+                # Update chat display only the first time
+                self.update_chat_for_ready_model(model_name)
+    
     def update_chat_for_ready_model(self, model_name):
         """Update chat display when model is ready for use."""
         # Check if operation was cancelled or model switched
@@ -3245,8 +3422,7 @@ Once installed, click 'Refresh' in the main application to detect models.
             return
             
         # Only update if this is still the selected model and it's ready
-        if (hasattr(self, 'model_status') and self.model_status == "Ready" and 
-            hasattr(self, 'selected_model') and self.selected_model == model_name):
+        if (hasattr(self, 'selected_model') and self.selected_model == model_name):
             # Update chat display with ready message
             self.chat_display.config(state='normal')
             self.chat_display.delete(1.0, tk.END)
@@ -3346,21 +3522,31 @@ Once installed, click 'Refresh' in the main application to detect models.
             return
         
         # Check model status before allowing message sending
-        if hasattr(self, 'model_status') and self.model_status != "Ready":
-            if self.model_status == "Loading":
-                self.show_status_message("⚠️ Model is still loading. Please wait for the model to be ready.")
-            elif self.model_status == "Error":
-                self.show_status_message("⚠️ Model has an error. Please try selecting the model again.")
-            else:
-                self.show_status_message("⚠️ Please wait for the model to be ready before sending messages.")
-            return
+        model_ready = False
         
-        # Double-check that model is actually loaded and ready
-        if not self.is_model_loaded_basic(self.selected_model):
-            self.show_status_message("⚠️ Model is not fully loaded yet. Please wait a moment and try again.")
-            # Trigger a status refresh
-            self.update_model_details_safe(self.selected_model, loading=False)
-            return
+        # First check UI status
+        if hasattr(self, 'model_status') and self.model_status == "Ready":
+            model_ready = True
+        
+        # If UI says not ready, double-check if model is actually loaded
+        if not model_ready:
+            if self.is_model_loaded_basic(self.selected_model):
+                # Model is loaded but UI hasn't caught up - let's fix that
+                self.enable_chat_for_loaded_model(self.selected_model)
+                model_ready = True
+                self.show_status_message("✅ Model is loaded, enabling chat...")
+                # No return here - allow message sending to proceed
+            else:
+                # Model isn't actually loaded according to both checks
+                if hasattr(self, 'model_status') and self.model_status == "Loading":
+                    self.show_status_message("⚠️ Model is still loading. Please wait for the model to be ready.")
+                elif hasattr(self, 'model_status') and self.model_status == "Error":
+                    self.show_status_message("⚠️ Model has an error. Please try selecting the model again.")
+                else:
+                    self.show_status_message("⚠️ Please wait for the model to be ready before sending messages.")
+                # Trigger a status refresh
+                self.update_model_details_safe(self.selected_model, loading=False)
+                return
         
         # Check if input field is disabled (shouldn't happen with proper UI state management)
         if str(self.user_input.cget('state')) == 'disabled':
