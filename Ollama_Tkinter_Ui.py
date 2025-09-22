@@ -6,6 +6,8 @@ import subprocess
 import threading
 import time
 import os
+import sys
+import platform
 import requests
 import json
 import re
@@ -552,17 +554,35 @@ class OllamaGUI:
         threading.Thread(target=check_and_start, daemon=True).start()
 
     def find_ollama_path(self):
-        """Find the full path to ollama executable."""
-        # First try common paths where ollama might be installed
-        common_paths = [
-            "/usr/local/bin/ollama",
-            "/usr/bin/ollama", 
-            "/home/al/.local/bin/ollama",
-            "/opt/ollama/bin/ollama",
-            "/snap/bin/ollama",
-            os.path.expanduser("~/.local/bin/ollama")
-        ]
+        """Find the full path to ollama executable in a cross-platform way."""
+        # Get platform-specific paths
+        if platform.system() == "Windows":
+            common_paths = [
+                os.path.join(os.environ.get("ProgramFiles", "C:\\Program Files"), "Ollama", "ollama.exe"),
+                os.path.join(os.environ.get("ProgramFiles(x86)", "C:\\Program Files (x86)"), "Ollama", "ollama.exe"),
+                os.path.join(os.environ.get("LOCALAPPDATA", ""), "Ollama", "ollama.exe"),
+                os.path.join(os.environ.get("APPDATA", ""), "Ollama", "ollama.exe"),
+                "ollama.exe"  # Search in PATH
+            ]
+        elif platform.system() == "Darwin":  # macOS
+            common_paths = [
+                "/usr/local/bin/ollama",
+                "/opt/homebrew/bin/ollama",
+                os.path.expanduser("~/ollama"),
+                os.path.expanduser("~/.ollama/ollama"),
+                os.path.expanduser("~/Applications/Ollama.app/Contents/MacOS/ollama"),
+                "/Applications/Ollama.app/Contents/MacOS/ollama"
+            ]
+        else:  # Linux and other Unix-like systems
+            common_paths = [
+                "/usr/local/bin/ollama",
+                "/usr/bin/ollama",
+                "/opt/ollama/bin/ollama",
+                "/snap/bin/ollama",
+                os.path.expanduser("~/.local/bin/ollama")
+            ]
         
+        # Try common paths first
         for path in common_paths:
             if os.path.isfile(path) and os.access(path, os.X_OK):
                 try:
@@ -572,105 +592,162 @@ class OllamaGUI:
                 except (FileNotFoundError, subprocess.TimeoutExpired):
                     continue
         
-        # Try to find ollama in user's normal shell environment
+        # Try to find ollama in user's shell environment
         try:
-            # Use bash with login shell to get proper PATH
-            result = subprocess.run(
-                ["bash", "-l", "-c", "which ollama"], 
-                capture_output=True, text=True, timeout=5
-            )
+            # Platform-specific command to locate executable in PATH
+            if platform.system() == "Windows":
+                result = subprocess.run(
+                    ["where", "ollama"], 
+                    capture_output=True, text=True, timeout=5
+                )
+            elif platform.system() in ["Darwin", "Linux"]:
+                # Use shell's which command
+                shell_cmd = ["which", "ollama"]
+                result = subprocess.run(
+                    shell_cmd, 
+                    capture_output=True, text=True, timeout=5
+                )
             if result.returncode == 0 and result.stdout.strip():
                 ollama_path = result.stdout.strip()
                 # Verify it works
                 test_result = subprocess.run([ollama_path, "--version"], capture_output=True, text=True, timeout=5)
                 if test_result.returncode == 0:
                     return ollama_path
-        except Exception:
-            pass
+        except Exception as e:
+            self.show_status_message(f"Error finding Ollama in PATH: {str(e)}")
         
-        # Final fallback - try "ollama" in PATH
+        # Final fallback - try "ollama" directly in PATH
         try:
-            result = subprocess.run(["ollama", "--version"], capture_output=True, text=True, timeout=5)
+            # Determine executable name based on platform
+            executable_name = "ollama.exe" if platform.system() == "Windows" else "ollama"
+            result = subprocess.run([executable_name, "--version"], capture_output=True, text=True, timeout=5)
             if result.returncode == 0:
-                return "ollama"
+                return executable_name
         except (FileNotFoundError, subprocess.TimeoutExpired):
             pass
         
+        self.show_status_message(f"Could not find Ollama on this {platform.system()} system")
         return None
 
     def is_ollama_server_running(self):
-        """Check if Ollama server is running"""
+        """Check if Ollama server is running in a cross-platform way"""
         try:
             if not self.ollama_path:
                 return False
+                
+            # The 'list' command works cross-platform to check if server is responding
             subprocess.run([self.ollama_path, "list"], 
                          check=True, capture_output=True, text=True, timeout=5)
             return True
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError) as e:
+            # For debugging server connectivity issues
+            self.show_status_message(f"Server check failed: {type(e).__name__}")
             return False
     
     def detect_server_starter(self):
-        """Detect who started the Ollama server process."""
+        """Detect who started the Ollama server process in a cross-platform way."""
         try:
             # Get current user info
-            import getpass
             current_user = getpass.getuser()
-            current_uid = os.getuid()
             
-            # Find ollama serve processes
-            try:
-                # Use ps to find ollama serve processes with user info
-                ps_result = subprocess.run(
-                    ["ps", "aux"], 
-                    capture_output=True, text=True, timeout=5
-                )
-                
-                if ps_result.returncode == 0:
-                    lines = ps_result.stdout.split('\n')
-                    for line in lines:
-                        if 'ollama serve' in line and not line.strip().startswith('ps'):
-                            # Parse ps output: USER PID %CPU %MEM VSZ RSS TTY STAT START TIME COMMAND
-                            parts = line.split()
-                            if len(parts) >= 11:
-                                process_user = parts[0]
-                                process_pid = parts[1]
-                                self.show_status_message(f"Found ollama serve process running as: {process_user}")
-                                
-                                # Check if it's the current user
-                                if process_user == current_user:
-                                    return True  # Started by user
-                                elif process_user in ['root', 'ollama', 'systemd+', '_ollama']:
-                                    return False  # Started by system
-                                else:
-                                    # Could be another user, assume system for safety
-                                    self.show_status_message(f"Unknown user '{process_user}', assuming system process")
-                                    return False
-                
-                # Fallback: try pgrep with user info
-                pgrep_result = subprocess.run(
-                    ["pgrep", "-f", "-u", current_user, "ollama serve"],
-                    capture_output=True, text=True, timeout=3
-                )
-                
-                if pgrep_result.returncode == 0 and pgrep_result.stdout.strip():
-                    # Found ollama serve process running as current user
-                    pids = pgrep_result.stdout.strip().split('\n')
-                    self.show_status_message(f"ollama serve confirmed running as {current_user}")
-                    return True
-                else:
-                    # Check if it's running as system user
-                    pgrep_system = subprocess.run(
-                        ["pgrep", "-f", "ollama serve"],
-                        capture_output=True, text=True, timeout=3
+            # Different approaches based on platform
+            if platform.system() == "Windows":
+                # On Windows, use tasklist to find processes
+                try:
+                    task_result = subprocess.run(
+                        ["tasklist", "/FI", "IMAGENAME eq ollama.exe", "/V", "/FO", "CSV"],
+                        capture_output=True, text=True, timeout=5
                     )
-                    if pgrep_system.returncode == 0:
-                        system_pids = pgrep_system.stdout.strip().split('\n')
-                        self.show_status_message("ollama serve found running as system process")
-                        return False
+                    
+                    if task_result.returncode == 0 and "ollama.exe" in task_result.stdout:
+                        # On Windows, for simplicity, we'll always consider it user-started if running
+                        self.show_status_message("Ollama server detected on Windows")
+                        return True
+                    
+                except Exception as e:
+                    self.show_status_message(f"Windows process detection error: {str(e)}")
+                    return False
+                    
+            elif platform.system() == "Darwin":  # macOS
+                try:
+                    # On macOS, use ps to find processes
+                    ps_result = subprocess.run(
+                        ["ps", "-ef"], 
+                        capture_output=True, text=True, timeout=5
+                    )
+                    
+                    if ps_result.returncode == 0:
+                        lines = ps_result.stdout.split('\n')
+                        for line in lines:
+                            if 'ollama serve' in line:
+                                parts = line.split()
+                                if len(parts) >= 3:
+                                    process_user = parts[0]
+                                    self.show_status_message(f"Found ollama serve process running as: {process_user}")
+                                    
+                                    # Check if it's the current user
+                                    if process_user == current_user:
+                                        return True  # Started by user
+                                    else:
+                                        return False  # Started by system or another user
                 
-            except Exception as e:
-                self.show_status_message(f"Error detecting server starter: {str(e)}")
-                
+                except Exception as e:
+                    self.show_status_message(f"macOS process detection error: {str(e)}")
+            
+            else:  # Linux and other Unix-like systems
+                try:
+                    # Use ps to find ollama serve processes with user info
+                    ps_result = subprocess.run(
+                        ["ps", "aux"], 
+                        capture_output=True, text=True, timeout=5
+                    )
+                    
+                    if ps_result.returncode == 0:
+                        lines = ps_result.stdout.split('\n')
+                        for line in lines:
+                            if 'ollama serve' in line and not line.strip().startswith('ps'):
+                                # Parse ps output: USER PID %CPU %MEM VSZ RSS TTY STAT START TIME COMMAND
+                                parts = line.split()
+                                if len(parts) >= 11:
+                                    process_user = parts[0]
+                                    self.show_status_message(f"Found ollama serve process running as: {process_user}")
+                                    
+                                    # Check if it's the current user
+                                    if process_user == current_user:
+                                        return True  # Started by user
+                                    elif process_user in ['root', 'ollama', 'systemd+', '_ollama']:
+                                        return False  # Started by system
+                                    else:
+                                        # Could be another user, assume system for safety
+                                        self.show_status_message(f"Unknown user '{process_user}', assuming system process")
+                                        return False
+                    
+                    # Linux-specific fallback: try pgrep with user info
+                    try:
+                        pgrep_result = subprocess.run(
+                            ["pgrep", "-f", "-u", current_user, "ollama serve"],
+                            capture_output=True, text=True, timeout=3
+                        )
+                        
+                        if pgrep_result.returncode == 0 and pgrep_result.stdout.strip():
+                            self.show_status_message(f"ollama serve confirmed running as {current_user}")
+                            return True
+                        else:
+                            # Check if it's running as system user
+                            pgrep_system = subprocess.run(
+                                ["pgrep", "-f", "ollama serve"],
+                                capture_output=True, text=True, timeout=3
+                            )
+                            if pgrep_system.returncode == 0:
+                                self.show_status_message("ollama serve found running as system process")
+                                return False
+                    except Exception:
+                        # pgrep might not be available on all Linux distributions
+                        pass
+                        
+                except Exception as e:
+                    self.show_status_message(f"Linux process detection error: {str(e)}")
+            
             # If we can't determine, assume system for safety
             self.show_status_message("Could not determine server starter, assuming system")
             return False
@@ -2399,25 +2476,37 @@ Once installed, click 'Refresh' in the main application to detect models.
         self.stop_button.config(state='disabled')  # Keep stop disabled when not generating
 
     def auto_start_server(self):
-        """Automatically start the Ollama server if not running."""
+        """Automatically start the Ollama server if not running, in a cross-platform way."""
         if self.server_starting or not self.ollama_path:
             return
             
         self.server_starting = True
         # Mark that this GUI is starting the server
         self.server_started_by_user = True
-        self.show_status_message("Starting Ollama server...")
+        self.show_status_message(f"Starting Ollama server on {platform.system()}...")
         
         def start_server():
             try:
-                self.root.after(0, lambda: self.show_status_message("Launching ollama serve command..."))
+                self.root.after(0, lambda: self.show_status_message(f"Launching ollama serve command with {self.ollama_path}..."))
                 
-                self.ollama_process = subprocess.Popen(
-                    [self.ollama_path, "serve"], 
-                    stdout=subprocess.DEVNULL, 
-                    stderr=subprocess.DEVNULL,
-                    start_new_session=True
-                )
+                # Platform-specific process creation
+                if platform.system() == "Windows":
+                    # On Windows, use creationflags to hide the console window
+                    from subprocess import CREATE_NO_WINDOW
+                    self.ollama_process = subprocess.Popen(
+                        [self.ollama_path, "serve"], 
+                        stdout=subprocess.DEVNULL, 
+                        stderr=subprocess.DEVNULL,
+                        creationflags=CREATE_NO_WINDOW
+                    )
+                else:
+                    # On Unix-like systems, use start_new_session
+                    self.ollama_process = subprocess.Popen(
+                        [self.ollama_path, "serve"], 
+                        stdout=subprocess.DEVNULL, 
+                        stderr=subprocess.DEVNULL,
+                        start_new_session=True
+                    )
                 
                 self.root.after(0, lambda: self.show_status_message("Waiting for server to initialize..."))
                 
