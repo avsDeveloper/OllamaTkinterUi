@@ -2785,32 +2785,92 @@ Once installed, click 'Refresh' in the main application to detect models.
                             r'gpu[:\s]*(\d+)%[,\s]*cpu[:\s]*(\d+)%',  # "GPU: 38%, CPU: 62%"
                             r'(\d+)%\s*gpu[,\s]*(\d+)%\s*cpu',  # "38% GPU, 62% CPU"
                             r'gpu[:\s]*(\d+)[,\s]*cpu[:\s]*(\d+)',  # "GPU: 38, CPU: 62" (without %)
+                            r'(\d+)%[/\s,]*(\d+)%',  # More flexible separator patterns
+                            r'gpu[:\s]*(\d+).*?cpu[:\s]*(\d+)',  # Very flexible GPU/CPU pattern
                         ]
                         
+                        usage_found = False
                         for pattern in gpu_cpu_patterns:
                             usage_match = re.search(pattern, line.lower())
                             if usage_match:
                                 gpu_pct = usage_match.group(1)
                                 cpu_pct = usage_match.group(2)
                                 model_info["gpu_cpu_usage"] = f"{gpu_pct}%/{cpu_pct}%"
+                                usage_found = True
                                 break
-                        else:
-                            # If no percentage found in ollama ps output, but model is in ps
-                            # Get actual system CPU/GPU usage since ollama ps doesn't always show detailed usage
-                            gpu_usage, cpu_usage = self.get_system_usage_info()
-                            model_info["gpu_cpu_usage"] = f"{gpu_usage}%/{cpu_usage}%"
+                        
+                        if not usage_found:
+                            # Look for any single percentage that might indicate model activity
+                            # Check for GPU-specific patterns first
+                            gpu_patterns = [
+                                r'gpu[:\s]*(\d+(?:\.\d+)?)%',  # "GPU: 45%"
+                                r'(\d+(?:\.\d+)?)%\s*gpu',  # "45% GPU"
+                                r'vram[:\s]*(\d+(?:\.\d+)?)%',  # "VRAM: 45%"
+                                r'(\d+(?:\.\d+)?)%\s*vram',  # "45% VRAM"
+                            ]
+                            
+                            # Check for CPU-specific patterns
+                            cpu_patterns = [
+                                r'cpu[:\s]*(\d+(?:\.\d+)?)%',  # "CPU: 45%"
+                                r'(\d+(?:\.\d+)?)%\s*cpu',  # "45% CPU"
+                                r'ram[:\s]*(\d+(?:\.\d+)?)%',  # "RAM: 45%"
+                                r'(\d+(?:\.\d+)?)%\s*ram',  # "45% RAM"
+                            ]
+                            
+                            # Generic patterns (without explicit GPU/CPU context)
+                            generic_patterns = [
+                                r'(\d+(?:\.\d+)?)%',  # Any percentage like "45%", "67.5%"
+                                r'(\d+(?:\.\d+)?)\s*percent',  # "45 percent"
+                                r'load[:\s]*(\d+(?:\.\d+)?)%',  # "load: 45%"
+                                r'usage[:\s]*(\d+(?:\.\d+)?)%',  # "usage: 45%"
+                            ]
+                            
+                            # Try GPU patterns first
+                            for pattern in gpu_patterns:
+                                gpu_match = re.search(pattern, line.lower())
+                                if gpu_match:
+                                    pct = gpu_match.group(1)
+                                    model_info["gpu_cpu_usage"] = f"{pct}%/0%"
+                                    usage_found = True
+                                    break
+                            
+                            # If no GPU pattern found, try CPU patterns
+                            if not usage_found:
+                                for pattern in cpu_patterns:
+                                    cpu_match = re.search(pattern, line.lower())
+                                    if cpu_match:
+                                        pct = cpu_match.group(1)
+                                        model_info["gpu_cpu_usage"] = f"0%/{pct}%"
+                                        usage_found = True
+                                        break
+                            
+                            # If still no specific pattern found, use generic patterns
+                            # Default to GPU usage for generic percentages (most common case)
+                            if not usage_found:
+                                for pattern in generic_patterns:
+                                    generic_match = re.search(pattern, line.lower())
+                                    if generic_match:
+                                        pct = generic_match.group(1)
+                                        # For generic percentages without context, assume GPU usage
+                                        model_info["gpu_cpu_usage"] = f"{pct}%/0%"
+                                        usage_found = True
+                                        break
+                        
+                        if not usage_found:
+                            # If model is in ps output but no usage patterns found,
+                            # it's likely running but ollama ps doesn't show detailed usage
+                            # For small models, this is often normal - show a positive indicator
+                            model_info["gpu_cpu_usage"] = "Model running"
                         break
                 else:
                     # Model not found in ps output, might be loading
                     model_info["ram_usage"] = "Loading"
-                    # Try to get system usage anyway for GPU-only small models
-                    gpu_usage, cpu_usage = self.get_system_usage_info()
-                    model_info["gpu_cpu_usage"] = f"{gpu_usage}%/{cpu_usage}%"
+                    # Don't show system usage as it's not model-specific
+                    model_info["gpu_cpu_usage"] = "Model not loaded"
             else:
                 self.show_status_message(f"Unable to get model status: {ps_result.stderr.strip()}")
-                # Even if ps fails, try to get system usage for loaded models
-                gpu_usage, cpu_usage = self.get_system_usage_info()
-                model_info["gpu_cpu_usage"] = f"{gpu_usage}%/{cpu_usage}%"
+                # Don't show system usage when we can't get model-specific data
+                model_info["gpu_cpu_usage"] = "Unable to determine"
             
             return model_info
             
