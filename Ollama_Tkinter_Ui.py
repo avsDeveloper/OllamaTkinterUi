@@ -2796,15 +2796,21 @@ Once installed, click 'Refresh' in the main application to detect models.
                                 break
                         else:
                             # If no percentage found in ollama ps output, but model is in ps
-                            # This means model is loading or starting up
-                            model_info["ram_usage"] = "Loading"
-                            model_info["gpu_cpu_usage"] = "0%/0%"
+                            # Get actual system CPU/GPU usage since ollama ps doesn't always show detailed usage
+                            gpu_usage, cpu_usage = self.get_system_usage_info()
+                            model_info["gpu_cpu_usage"] = f"{gpu_usage}%/{cpu_usage}%"
                         break
                 else:
+                    # Model not found in ps output, might be loading
                     model_info["ram_usage"] = "Loading"
-                    model_info["gpu_cpu_usage"] = "0%/0%"
+                    # Try to get system usage anyway for GPU-only small models
+                    gpu_usage, cpu_usage = self.get_system_usage_info()
+                    model_info["gpu_cpu_usage"] = f"{gpu_usage}%/{cpu_usage}%"
             else:
                 self.show_status_message(f"Unable to get model status: {ps_result.stderr.strip()}")
+                # Even if ps fails, try to get system usage for loaded models
+                gpu_usage, cpu_usage = self.get_system_usage_info()
+                model_info["gpu_cpu_usage"] = f"{gpu_usage}%/{cpu_usage}%"
             
             return model_info
             
@@ -3164,7 +3170,7 @@ Once installed, click 'Refresh' in the main application to detect models.
             # Set color based on content - blue for loading/unknown, green for actual data
             size_color = "#1976D2" if model_info['size'] in ["Unknown", "Loading...", "Error"] else "green"
             ram_color = "#1976D2" if model_info['ram_usage'] in ["Unknown", "Loading...", "Error", "Not loaded"] else "green"
-            usage_color = "#1976D2" if model_info['gpu_cpu_usage'] in ["Unknown", "Loading...", "Error", "0%/0%"] else "green"
+            usage_color = "#1976D2" if model_info['gpu_cpu_usage'] in ["Unknown", "Loading...", "Error"] else "green"
             context_color = "#1976D2" if model_info['context'] in ["Unknown", "Loading...", "Error"] else "green"
             
             # Update status line
@@ -3224,7 +3230,7 @@ Once installed, click 'Refresh' in the main application to detect models.
                 # Set color based on content - blue for loading/unknown, green for actual data
                 size_color = "#1976D2" if model_info['size'] in ["Unknown", "Loading...", "Error"] else "green"
                 ram_color = "#1976D2" if model_info['ram_usage'] in ["Unknown", "Loading...", "Error", "Not loaded"] else "green"
-                usage_color = "#1976D2" if model_info['gpu_cpu_usage'] in ["Unknown", "Loading...", "Error", "0%/0%"] else "green"
+                usage_color = "#1976D2" if model_info['gpu_cpu_usage'] in ["Unknown", "Loading...", "Error"] else "green"
                 context_color = "#1976D2" if model_info['context'] in ["Unknown", "Loading...", "Error"] else "green"
                 
                 loading_note = self.get_loading_attempts_note(model_name)
@@ -3282,7 +3288,7 @@ Once installed, click 'Refresh' in the main application to detect models.
             # Set color based on content - blue for loading/unknown, green for actual data
             size_color = "#1976D2" if model_info['size'] in ["Unknown", "Loading...", "Error"] else "green"
             ram_color = "#1976D2" if model_info['ram_usage'] in ["Unknown", "Loading...", "Error", "Not loaded"] else "green"
-            usage_color = "#1976D2" if model_info['gpu_cpu_usage'] in ["Unknown", "Loading...", "Error", "0%/0%"] else "green"
+            usage_color = "#1976D2" if model_info['gpu_cpu_usage'] in ["Unknown", "Loading...", "Error"] else "green"
             context_color = "#1976D2" if model_info['context'] in ["Unknown", "Loading...", "Error"] else "green"
             
             loading_note = self.get_loading_attempts_note(model_name)
