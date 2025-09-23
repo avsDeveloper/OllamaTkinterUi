@@ -3584,44 +3584,85 @@ Once installed, click 'Refresh' in the main application to detect models.
             else:
                 self.root.after(0, lambda: self.show_status_message(f"Loading model '{model_name}'{attempt_str} (may take up to {timeout} seconds)..."))
             
-            # Try a simpler approach first for faster loading
+            # Try a more comprehensive approach without test messages
             try:
-                # First try with a simple ollama show to check if model is ready
-                self.root.after(0, lambda: self.show_status_message(f"Checking if model '{model_name}' is already available..."))
-                show_result = subprocess.run([self.ollama_path, "show", model_name], 
-                                          capture_output=True, text=True, timeout=10)
+                # Use comprehensive readiness check instead of simple show/ps
+                self.root.after(0, lambda: self.show_status_message(f"Performing comprehensive readiness check for '{model_name}'..."))
                 
-                if show_result.returncode == 0 and show_result.stdout.strip():
-                    # Model seems to be available, try a short warmup prompt
-                    warmup_prompt = "hi"
-                    self.root.after(0, lambda: self.show_status_message(f"Sending a quick test message to '{model_name}'..."))
+                is_ready, confidence, status_info = self.check_model_readiness_comprehensive(model_name)
+                
+                if is_ready and confidence >= 70:
+                    # High confidence that model is ready
+                    self.root.after(0, lambda: self.show_status_message(f"✅ Model '{model_name}' verified as ready ({confidence}% confidence: {status_info})"))
+                    self.preloaded_models[model_name] = time.time()
+                    self.preload_success_models.add(model_name)
+                    self.preloading_model = False
                     
-                    quick_result = subprocess.run([self.ollama_path, "run", model_name, warmup_prompt], 
-                                              capture_output=True, text=True, timeout=30)
+                    # Get model info and enable chat
+                    model_info = self.get_model_info(model_name)
+                    if model_info:
+                        self.root.after(0, lambda: self.update_model_info_display(model_name, model_info, loading=False))
+                        self.root.after(0, lambda: self.enable_chat_for_loaded_model(model_name))
+                    return
+                elif is_ready and confidence >= 50:
+                    # Moderate confidence - proceed but with note
+                    self.root.after(0, lambda: self.show_status_message(f"✅ Model '{model_name}' appears ready ({confidence}% confidence: {status_info})"))
+                    self.preloaded_models[model_name] = time.time()
+                    self.preload_success_models.add(model_name)
+                    self.preloading_model = False
                     
-                    if quick_result.returncode == 0:
-                        # Model is ready without full initialization
-                        self.root.after(0, lambda: self.show_status_message(f"✅ Model '{model_name}' is ready for use"))
-                        # Set our variable and return early
-                        self.preloaded_models[model_name] = time.time()
-                        self.preload_success_models.add(model_name)
-                        self.preloading_model = False
-                        
-                        # Get model info
-                        model_info = self.get_model_info(model_name)
-                        if model_info:
-                            self.root.after(0, lambda: self.update_model_info_display(model_name, model_info, loading=False))
-                            self.root.after(0, lambda: self.enable_chat_for_loaded_model(model_name))
-                        return
+                    # Get model info and enable chat
+                    model_info = self.get_model_info(model_name)
+                    if model_info:
+                        self.root.after(0, lambda: self.update_model_info_display(model_name, model_info, loading=False))
+                        self.root.after(0, lambda: self.enable_chat_for_loaded_model(model_name))
+                    return
+                else:
+                    # Low confidence - need to initialize
+                    self.root.after(0, lambda: self.show_status_message(f"Model '{model_name}' readiness uncertain ({confidence}% confidence: {status_info}), will initialize..."))
+                    
             except Exception as e:
-                # Continue with full initialization if quick check fails
-                self.root.after(0, lambda: self.show_status_message(f"Quick check for '{model_name}' didn't work, proceeding with full initialization..."))
+                # Continue with initialization if checks fail
+                self.root.after(0, lambda: self.show_status_message(f"Readiness check failed for '{model_name}': {str(e)}, will initialize..."))
             
-            # If we got here, the quick check didn't work - proceed with full initialization
-            # We use a more substantial prompt to ensure the model is fully loaded and ready for inference
-            warmup_prompt = "Please respond with a single word: 'Ready'. This query is to ensure you're fully loaded."
+            # If we got here, try to initialize the model with minimal interaction
+            # First attempt: try to load model metadata which should trigger loading if needed
+            try:
+                self.root.after(0, lambda: self.show_status_message(f"Attempting to initialize model '{model_name}' without test messages..."))
+                
+                # Try to get detailed model information, which may trigger model loading
+                model_info = self.get_model_info(model_name)
+                
+                # Check if we got meaningful model information
+                if (model_info and 
+                    model_info.get('size') not in ['Unknown', 'Error', 'Loading...'] and
+                    model_info.get('ram_usage') not in ['Unknown', 'Error', 'Loading...', 'Not loaded']):
+                    
+                    # Getting model info successfully usually means the model is loaded
+                    self.root.after(0, lambda: self.show_status_message(f"✅ Model '{model_name}' initialized successfully (info retrieved)"))
+                    self.preloading_model = False
+                    
+                    # Mark as successfully loaded
+                    if not hasattr(self, 'preloaded_models'):
+                        self.preloaded_models = {}
+                    if not hasattr(self, 'preload_success_models'):
+                        self.preload_success_models = set()
+                    self.preloaded_models[model_name] = time.time()
+                    self.preload_success_models.add(model_name)
+                    
+                    # Update UI
+                    self.root.after(0, lambda: self.update_model_info_display(model_name, model_info, loading=False))
+                    self.root.after(0, lambda: self.enable_chat_for_loaded_model(model_name))
+                    return
+                    
+            except Exception as e:
+                self.root.after(0, lambda: self.show_status_message(f"Metadata approach failed for '{model_name}': {str(e)}"))
             
-            self.root.after(0, lambda: self.show_status_message(f"Initializing model '{model_name}'... this ensures it's fully ready"))
+            # Fallback: If metadata approach didn't work, use minimal test message as last resort
+            # Use a very short prompt to minimize impact
+            warmup_prompt = "ok"  # Minimal prompt
+            
+            self.root.after(0, lambda: self.show_status_message(f"Using minimal test message to verify '{model_name}' is ready..."))
             result = subprocess.run([self.ollama_path, "run", model_name, warmup_prompt], 
                                   capture_output=True, text=True, timeout=timeout)
             
