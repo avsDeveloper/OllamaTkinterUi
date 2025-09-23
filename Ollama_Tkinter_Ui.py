@@ -2731,21 +2731,71 @@ Once installed, click 'Refresh' in the main application to detect models.
                         break
                 
                 # Parse context window - look for various context patterns
+                # Context tokens are different from model parameters!
                 context_patterns = [
-                    r'context(?:\s+length)?[:\s]+(\d+)',  # "context length: 4096"
-                    r'max(?:imum)?[_\s]?context[:\s]+(\d+)',  # "max_context: 4096"
+                    # Patterns for context values with K/M/B suffixes (tokens, not parameters)
+                    r'context(?:\s+(?:length|size|window))?[:\s]+(\d+(?:\.\d+)?)\s*([kmb])\s*(?:tokens?)?',  # "context length: 131k tokens"
+                    r'max(?:imum)?[_\s]?context[:\s]+(\d+(?:\.\d+)?)\s*([kmb])\s*(?:tokens?)?',  # "max_context: 1.5m tokens"
+                    r'context[_\s]?(?:size|window)[:\s]+(\d+(?:\.\d+)?)\s*([kmb])\s*(?:tokens?)?',  # "context_size: 2b tokens"
+                    r'num_ctx[:\s]+(\d+(?:\.\d+)?)\s*([kmb])\s*(?:tokens?)?',  # "num_ctx: 131k tokens"
+                    r'(\d+(?:\.\d+)?)\s*([kmb])\s*(?:token|context)',  # "131k token context"
+                    
+                    # Patterns for raw context numbers (not parameters)
+                    r'context(?:\s+(?:length|size|window))?[:\s]+(\d+)(?:\s+tokens?)?',  # "context length: 4096" or "context: 4096 tokens"
+                    r'max(?:imum)?[_\s]?context[:\s]+(\d+)(?:\s+tokens?)?',  # "max_context: 4096"
+                    r'context[_\s]?(?:size|window)[:\s]+(\d+)(?:\s+tokens?)?',  # "context_size: 4096"
+                    r'num_ctx[:\s]+(\d+)(?:\s+tokens?)?',  # "num_ctx: 4096"
                     r'(\d+)\s*(?:token|k)\s*context',  # "4096 token context"
-                    r'context[_\s]?(?:size|window)[:\s]+(\d+)',  # "context_size: 4096"
-                    r'num_ctx[:\s]+(\d+)',  # "num_ctx: 4096"
+                    
+                    # Common context window sizes to help identify them
+                    r'(?:context|window|tokens?).*?(\d+)\s*k(?:\s+tokens?)?',  # "context window of 8k tokens"
+                    r'(?:supports?|up\s+to)\s+(\d+)\s*k\s*(?:token|context)',  # "supports 32k context"
                 ]
                 
                 for pattern in context_patterns:
                     match = re.search(pattern, output_lower)
                     if match:
-                        context_size = int(match.group(1))
-                        if context_size >= 1000:
-                            model_info["context"] = f"{context_size//1000}K"
+                        if len(match.groups()) == 2:
+                            # Pattern matched with suffix (K/M/B)
+                            value = float(match.group(1))
+                            suffix = match.group(2).lower()
+                            
+                            if suffix == 'k':
+                                context_size = int(value * 1000)
+                            elif suffix == 'm':
+                                context_size = int(value * 1000000)
+                            elif suffix == 'b':
+                                context_size = int(value * 1000000000)
+                            else:
+                                context_size = int(value)
                         else:
+                            # Pattern matched raw number
+                            context_size = int(match.group(1))
+                        
+                        # Validate that this looks like a context size, not parameter count
+                        # Context windows are typically 1K-2M tokens, parameter counts are typically 1B-405B
+                        if context_size < 1000:
+                            # Very small numbers (like 7, 13, 70) are likely parameters, not context
+                            continue
+                        elif context_size > 10_000_000:
+                            # Very large numbers (10M+) are likely parameters, not context tokens  
+                            continue
+                        
+                        # Format the output consistently for context tokens
+                        if context_size >= 1000000:
+                            # 1M+ tokens: show as "1.2M" format
+                            if context_size % 1000000 == 0:
+                                model_info["context"] = f"{context_size//1000000}M"
+                            else:
+                                model_info["context"] = f"{context_size/1000000:.1f}M"
+                        elif context_size >= 1000:
+                            # 1K+ tokens: show as "131K" format  
+                            if context_size % 1000 == 0:
+                                model_info["context"] = f"{context_size//1000}K"
+                            else:
+                                model_info["context"] = f"{context_size/1000:.1f}K"
+                        else:
+                            # Less than 1000: show exact number
                             model_info["context"] = str(context_size)
                         break
             else:
@@ -3247,11 +3297,25 @@ Once installed, click 'Refresh' in the main application to detect models.
             context_str = model_info['context']
             if context_str not in ["Unknown", "Loading...", "Error"]:
                 try:
-                    # Extract the numeric part from the context size string (e.g. "8192 tokens" -> 8192)
+                    # Parse context size with K/M/B suffixes (e.g. "131K", "1.5M", "2B")
                     if "tokens" in context_str.lower():
+                        # Old format with "tokens" suffix
                         self.max_context_tokens = int(context_str.lower().split("tokens")[0].strip())
                     else:
-                        self.max_context_tokens = int(''.join(c for c in context_str if c.isdigit()))
+                        # New format with K/M/B suffixes
+                        context_str = context_str.strip().upper()
+                        if context_str.endswith('K'):
+                            # e.g. "131K" -> 131000
+                            self.max_context_tokens = int(float(context_str[:-1]) * 1000)
+                        elif context_str.endswith('M'):
+                            # e.g. "1.5M" -> 1500000
+                            self.max_context_tokens = int(float(context_str[:-1]) * 1000000)
+                        elif context_str.endswith('B'):
+                            # e.g. "2B" -> 2000000000 (but this would be parameter count, not context)
+                            self.max_context_tokens = int(float(context_str[:-1]) * 1000000000)
+                        else:
+                            # Plain number
+                            self.max_context_tokens = int(''.join(c for c in context_str if c.isdigit()))
                 except (ValueError, AttributeError):
                     self.max_context_tokens = 4096  # Default if parsing fails
             else:
@@ -3303,11 +3367,25 @@ Once installed, click 'Refresh' in the main application to detect models.
                 context_str = model_info['context']
                 if context_str not in ["Unknown", "Loading...", "Error"]:
                     try:
-                        # Extract the numeric part from the context size string
+                        # Parse context size with K/M/B suffixes (e.g. "131K", "1.5M", "2B")
                         if "tokens" in context_str.lower():
+                            # Old format with "tokens" suffix
                             self.max_context_tokens = int(context_str.lower().split("tokens")[0].strip())
                         else:
-                            self.max_context_tokens = int(''.join(c for c in context_str if c.isdigit()))
+                            # New format with K/M/B suffixes
+                            context_str = context_str.strip().upper()
+                            if context_str.endswith('K'):
+                                # e.g. "131K" -> 131000
+                                self.max_context_tokens = int(float(context_str[:-1]) * 1000)
+                            elif context_str.endswith('M'):
+                                # e.g. "1.5M" -> 1500000
+                                self.max_context_tokens = int(float(context_str[:-1]) * 1000000)
+                            elif context_str.endswith('B'):
+                                # e.g. "2B" -> 2000000000 (but this would be parameter count, not context)
+                                self.max_context_tokens = int(float(context_str[:-1]) * 1000000000)
+                            else:
+                                # Plain number
+                                self.max_context_tokens = int(''.join(c for c in context_str if c.isdigit()))
                     except (ValueError, AttributeError):
                         self.max_context_tokens = 4096  # Default if parsing fails
                 else:
