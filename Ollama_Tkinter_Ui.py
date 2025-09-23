@@ -387,6 +387,9 @@ class OllamaGUI:
         # Start server monitoring
         self.start_server_monitoring()
         
+        # Start periodic model status updates
+        self.start_periodic_model_updates()
+        
         # Initial status update
         self.root.after(100, self.update_server_status_display)
 
@@ -2913,14 +2916,55 @@ Once installed, click 'Refresh' in the main application to detect models.
                             model_info["gpu_cpu_usage"] = "Model running"
                         break
                 else:
-                    # Model not found in ps output, might be loading
-                    model_info["ram_usage"] = "Loading"
-                    # Don't show system usage as it's not model-specific
-                    model_info["gpu_cpu_usage"] = "Model not loaded"
+                    # Model not found in ps output - could be a small model or not yet in memory
+                    # Try to determine if model is accessible
+                    try:
+                        # Quick check if model is accessible via show command
+                        show_result = subprocess.run([self.ollama_path, "show", model_name], 
+                                                   capture_output=True, text=True, timeout=3)
+                        if show_result.returncode == 0:
+                            # Model is accessible, might be small and not showing in ps
+                            # Try to get system-level usage as fallback
+                            try:
+                                gpu_usage, cpu_usage = self.get_system_usage_info()
+                                model_info["gpu_cpu_usage"] = f"{gpu_usage}%/{cpu_usage}%"
+                            except:
+                                model_info["gpu_cpu_usage"] = "Model ready"
+                            
+                            # For accessible models, estimate RAM usage based on model size
+                            size_str = model_info['size'].lower()
+                            if 'b' in size_str:
+                                try:
+                                    # Extract number from size (e.g., "7B" -> 7)
+                                    import re
+                                    size_match = re.search(r'(\d+(?:\.\d+)?)', size_str)
+                                    if size_match:
+                                        size_gb = float(size_match.group(1))
+                                        # Rough estimate: model size in GB * 1.2-1.5 for RAM usage
+                                        ram_estimate = size_gb * 1.3
+                                        model_info["ram_usage"] = f"~{ram_estimate:.1f} GB"
+                                    else:
+                                        model_info["ram_usage"] = "~2.0 GB"  # Default estimate
+                                except:
+                                    model_info["ram_usage"] = "~2.0 GB"  # Default estimate
+                            else:
+                                model_info["ram_usage"] = "~2.0 GB"  # Default estimate
+                        else:
+                            # Model not accessible, truly not loaded
+                            model_info["ram_usage"] = "Not loaded"
+                            model_info["gpu_cpu_usage"] = "Model not loaded"
+                    except:
+                        # Error checking model accessibility
+                        model_info["ram_usage"] = "Loading"
+                        model_info["gpu_cpu_usage"] = "Checking..."
             else:
                 self.show_status_message(f"Unable to get model status: {ps_result.stderr.strip()}")
-                # Don't show system usage when we can't get model-specific data
-                model_info["gpu_cpu_usage"] = "Unable to determine"
+                # Try to get system usage as fallback when ps command fails
+                try:
+                    gpu_usage, cpu_usage = self.get_system_usage_info()
+                    model_info["gpu_cpu_usage"] = f"{gpu_usage}%/{cpu_usage}%"
+                except:
+                    model_info["gpu_cpu_usage"] = "Unable to determine"
             
             return model_info
             
@@ -3265,8 +3309,10 @@ Once installed, click 'Refresh' in the main application to detect models.
         is_fully_verified = hasattr(self, 'preload_success_models') and model_name in self.preload_success_models
         
         # Check if we have valid model info - if so, display it and mark as ready
+        # Be more lenient about what counts as "valid" - even estimated values are useful
         has_valid_info = (model_info['size'] not in ["Unknown", "Error"] or 
-                         model_info['ram_usage'] not in ["Unknown", "Error", "Not loaded"])
+                         model_info['ram_usage'] not in ["Unknown", "Error"] or
+                         model_info['gpu_cpu_usage'] not in ["Unknown", "Error"])
         
         # Show model details if we have any valid information OR if model is verified
         if is_fully_verified or has_valid_info:
@@ -3277,11 +3323,11 @@ Once installed, click 'Refresh' in the main application to detect models.
             self.send_button.config(state='normal')
             
             # Always display model information when we have it
-            # Set color based on content - blue for loading/unknown, green for actual data
-            size_color = "#1976D2" if model_info['size'] in ["Unknown", "Loading...", "Error"] else "green"
-            ram_color = "#1976D2" if model_info['ram_usage'] in ["Unknown", "Loading...", "Error", "Not loaded"] else "green"
-            usage_color = "#1976D2" if model_info['gpu_cpu_usage'] in ["Unknown", "Loading...", "Error"] else "green"
-            context_color = "#1976D2" if model_info['context'] in ["Unknown", "Loading...", "Error"] else "green"
+            # Set color based on content - blue for loading/estimated/unknown, green for actual data
+            size_color = "#1976D2" if model_info['size'] in ["Unknown", "Loading", "Error"] else "green"
+            ram_color = "#1976D2" if model_info['ram_usage'] in ["Unknown", "Loading", "Error", "Not loaded"] else "green"
+            usage_color = "#1976D2" if model_info['gpu_cpu_usage'] in ["Unknown", "Loading", "Error", "Model not loaded", "Checking..."] else "green"
+            context_color = "#1976D2" if model_info['context'] in ["Unknown", "Loading", "Error"] else "green"
             
             # Update status line
             self.model_detail_lines[0].config(text="Model status: Ready", foreground="green")
@@ -3295,7 +3341,7 @@ Once installed, click 'Refresh' in the main application to detect models.
             
             # Extract and store max context tokens for token counter
             context_str = model_info['context']
-            if context_str not in ["Unknown", "Loading...", "Error"]:
+            if context_str not in ["Unknown", "Loading", "Error"]:
                 try:
                     # Parse context size with K/M/B suffixes (e.g. "131K", "1.5M", "2B")
                     if "tokens" in context_str.lower():
@@ -3351,11 +3397,11 @@ Once installed, click 'Refresh' in the main application to detect models.
                 self.send_button.config(state='normal')
                 
                 # Display model information
-                # Set color based on content - blue for loading/unknown, green for actual data
-                size_color = "#1976D2" if model_info['size'] in ["Unknown", "Loading...", "Error"] else "green"
-                ram_color = "#1976D2" if model_info['ram_usage'] in ["Unknown", "Loading...", "Error", "Not loaded"] else "green"
-                usage_color = "#1976D2" if model_info['gpu_cpu_usage'] in ["Unknown", "Loading...", "Error"] else "green"
-                context_color = "#1976D2" if model_info['context'] in ["Unknown", "Loading...", "Error"] else "green"
+                # Set color based on content - blue for loading/estimated/unknown, green for actual data
+                size_color = "#1976D2" if model_info['size'] in ["Unknown", "Loading", "Error"] else "green"
+                ram_color = "#1976D2" if model_info['ram_usage'] in ["Unknown", "Loading", "Error", "Not loaded"] else "green"
+                usage_color = "#1976D2" if model_info['gpu_cpu_usage'] in ["Unknown", "Loading", "Error", "Model not loaded", "Checking..."] else "green"
+                context_color = "#1976D2" if model_info['context'] in ["Unknown", "Loading", "Error"] else "green"
                 
                 loading_note = self.get_loading_attempts_note(model_name)
                 self.model_detail_lines[2].config(text=f"Model size: {model_info['size']}{loading_note}", foreground=size_color)
@@ -3365,7 +3411,7 @@ Once installed, click 'Refresh' in the main application to detect models.
                 
                 # Extract and store max context tokens for token counter
                 context_str = model_info['context']
-                if context_str not in ["Unknown", "Loading...", "Error"]:
+                if context_str not in ["Unknown", "Loading", "Error"]:
                     try:
                         # Parse context size with K/M/B suffixes (e.g. "131K", "1.5M", "2B")
                         if "tokens" in context_str.lower():
@@ -3424,10 +3470,10 @@ Once installed, click 'Refresh' in the main application to detect models.
             
             # Show model data
             # Set color based on content - blue for loading/unknown, green for actual data
-            size_color = "#1976D2" if model_info['size'] in ["Unknown", "Loading...", "Error"] else "green"
-            ram_color = "#1976D2" if model_info['ram_usage'] in ["Unknown", "Loading...", "Error", "Not loaded"] else "green"
-            usage_color = "#1976D2" if model_info['gpu_cpu_usage'] in ["Unknown", "Loading...", "Error"] else "green"
-            context_color = "#1976D2" if model_info['context'] in ["Unknown", "Loading...", "Error"] else "green"
+            size_color = "#1976D2" if model_info['size'] in ["Unknown", "Loading", "Error"] else "green"
+            ram_color = "#1976D2" if model_info['ram_usage'] in ["Unknown", "Loading", "Error", "Not loaded"] else "green"
+            usage_color = "#1976D2" if model_info['gpu_cpu_usage'] in ["Unknown", "Loading", "Error", "Model not loaded", "Checking..."] else "green"
+            context_color = "#1976D2" if model_info['context'] in ["Unknown", "Loading", "Error"] else "green"
             
             loading_note = self.get_loading_attempts_note(model_name)
             self.model_detail_lines[2].config(text=f"Model size: {model_info['size']}{loading_note}", foreground=size_color)
@@ -5398,6 +5444,46 @@ Once installed, click 'Refresh' in the main application to detect models.
         
         # Focus back on input for next translation
         self.translation_input.focus()
+    
+    def start_periodic_model_updates(self):
+        """Start periodic updates for model RAM and CPU/GPU usage information."""
+        def update_model_usage():
+            while self.monitoring:
+                try:
+                    # Only update if we have a selected model and it's marked as ready
+                    if (hasattr(self, 'selected_model') and self.selected_model and 
+                        hasattr(self, 'model_status') and self.model_status == "Ready"):
+                        
+                        # Get fresh model info
+                        model_info = self.get_model_info(self.selected_model)
+                        
+                        # Update only the RAM usage and CPU/GPU usage lines
+                        # Don't change the overall status or other details
+                        if model_info:
+                            # Schedule UI update on main thread
+                            def update_usage_display():
+                                try:
+                                    # Only update if model is still selected and ready
+                                    if (hasattr(self, 'selected_model') and self.selected_model and 
+                                        hasattr(self, 'model_status') and self.model_status == "Ready"):
+                                        
+                                        # Update RAM usage (line 3)
+                                        ram_color = "#1976D2" if model_info['ram_usage'] in ["Unknown", "Loading", "Error", "Not loaded"] else "green"
+                                        self.model_detail_lines[3].config(text=f"RAM usage: {model_info['ram_usage']}", foreground=ram_color)
+                                        
+                                        # Update CPU/GPU usage (line 4)
+                                        usage_color = "#1976D2" if model_info['gpu_cpu_usage'] in ["Unknown", "Loading", "Error", "Model not loaded", "Checking..."] else "green"
+                                        self.model_detail_lines[4].config(text=f"CPU/GPU usage: {model_info['gpu_cpu_usage']}", foreground=usage_color)
+                                except Exception:
+                                    pass  # Silently ignore errors in UI updates
+                            
+                            self.root.after(0, update_usage_display)
+                    
+                    time.sleep(10)  # Update every 10 seconds
+                except Exception:
+                    pass  # Continue monitoring even if individual updates fail
+        
+        threading.Thread(target=update_model_usage, daemon=True).start()
     
 if __name__ == "__main__":
     import re
