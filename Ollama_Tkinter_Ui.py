@@ -3096,19 +3096,16 @@ Once installed, click 'Refresh' in the main application to detect models.
                 # Get detailed model information
                 model_info = self.get_model_info(model_name)
                 
-                # Validate that we got meaningful model info before declaring ready
-                if (model_info and model_info.get('ram_usage') not in ['Unknown', 'Error', 'Loading', 'Not loaded'] and 
-                    model_info.get('size') not in ['Unknown', 'Error'] and
-                    model_info.get('context') not in ['Unknown', 'Error']):
-                    
+                # Always try to display model info if we have any useful data
+                # Even partial information is better than showing nothing
+                if model_info:
                     # Final check before updating UI
                     if (not getattr(self, 'model_loading_cancelled', False) or 
                         getattr(self, 'current_loading_model', '') == model_name):
-                        # Schedule UI update on main thread, pass the loading flag 
-                        # (False here because we're getting model details, not in initial loading state)
+                        # Schedule UI update on main thread
                         self.root.after(0, lambda: self.update_model_info_display(model_name, model_info, loading=False))
                 else:
-                    # Model info not complete yet, continue loading
+                    # No model info at all, continue checking
                     if (not getattr(self, 'model_loading_cancelled', False) or 
                         getattr(self, 'current_loading_model', '') == model_name):
                         # Go back to checking if model is loaded
@@ -3151,26 +3148,31 @@ Once installed, click 'Refresh' in the main application to detect models.
         # Check if model has passed the full inference verification via preload
         is_fully_verified = hasattr(self, 'preload_success_models') and model_name in self.preload_success_models
         
-        # Check if the model has passed our full verification test
-        # If it has, we can mark it ready regardless of model_info quality
-        if is_fully_verified:
+        # Check if we have valid model info - if so, display it and mark as ready
+        has_valid_info = (model_info['size'] not in ["Unknown", "Error"] or 
+                         model_info['ram_usage'] not in ["Unknown", "Error", "Not loaded"])
+        
+        # Show model details if we have any valid information OR if model is verified
+        if is_fully_verified or has_valid_info:
             self.model_status = "Ready"
-            status_color = "green"
-            status_text = "Model status: Ready"
             
             # Enable chat input and send button when model is ready
             self.user_input.config(state='normal')
             self.send_button.config(state='normal')
             
-            # Display model information
+            # Always display model information when we have it
             # Set color based on content - blue for loading/unknown, green for actual data
             size_color = "#1976D2" if model_info['size'] in ["Unknown", "Loading...", "Error"] else "green"
             ram_color = "#1976D2" if model_info['ram_usage'] in ["Unknown", "Loading...", "Error", "Not loaded"] else "green"
             usage_color = "#1976D2" if model_info['gpu_cpu_usage'] in ["Unknown", "Loading...", "Error", "0%/0%"] else "green"
             context_color = "#1976D2" if model_info['context'] in ["Unknown", "Loading...", "Error"] else "green"
             
-            loading_note = self.get_loading_attempts_note(model_name)
-            self.model_detail_lines[2].config(text=f"Model size: {model_info['size']}{loading_note}", foreground=size_color)
+            # Update status line
+            self.model_detail_lines[0].config(text="Model status: Ready", foreground="green")
+            self.model_detail_lines[1].config(text=f"Selected model: {short_name}", foreground="green")
+            
+            # Always show the detailed model information
+            self.model_detail_lines[2].config(text=f"Model size: {model_info['size']}", foreground=size_color)
             self.model_detail_lines[3].config(text=f"RAM usage: {model_info['ram_usage']}", foreground=ram_color)
             self.model_detail_lines[4].config(text=f"CPU/GPU usage: {model_info['gpu_cpu_usage']}", foreground=usage_color)
             self.model_detail_lines[5].config(text=f"Context size: {model_info['context']}", foreground=context_color)
@@ -3194,7 +3196,12 @@ Once installed, click 'Refresh' in the main application to detect models.
             
             # Update chat display to show model is ready
             self.update_chat_for_ready_model(model_name)
-        # Special case for small models - if we have basic info but not full verification,
+            
+            # Add model to success list if not already there
+            if not hasattr(self, 'preload_success_models'):
+                self.preload_success_models = set()
+            self.preload_success_models.add(model_name)
+        # Special case handling if we don't have good info yet
         # still mark as ready but show a note
         elif (not is_fully_verified and not loading and
               model_info['size'] not in ["Error", "Unknown"] and 
@@ -4919,7 +4926,7 @@ Once installed, click 'Refresh' in the main application to detect models.
             "Macedonian", "Albanian", "Maltese", "Luxembourgish", "Afrikaans",
             "Swahili", "Zulu", "Xhosa", "Yoruba", "Igbo", "Hausa", "Amharic", "Somali"
         ]
-    
+
     def update_mode_buttons(self):
         """Update the appearance of mode buttons based on current mode."""
         if self.is_translator_mode:
